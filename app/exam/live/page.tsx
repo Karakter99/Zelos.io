@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/utils/Supabase/client";
-import { CheckCircle2, ArrowRight, AlertTriangle, Lock } from "lucide-react";
+import { CheckCircle2, ArrowRight, AlertTriangle } from "lucide-react";
 
 interface Question {
   id: string;
@@ -103,7 +103,7 @@ export default function ActiveExamPage() {
           setQuestions(finalQuestions);
         } else {
           alert("Teacher has not uploaded questions yet!");
-          router.push("/exam/start");
+          router.push("/exam");
         }
       } catch (err: unknown) {
         console.error("Initialization Error:", err);
@@ -116,7 +116,6 @@ export default function ActiveExamPage() {
     startExam();
   }, [router]);
 
-  // 2. ANTI-CHEAT: Listen for Tab Switching
   // 2. ANTI-CHEAT: Listen for Tab Switching & Clicking Off-Screen
   useEffect(() => {
     // If we don't know who they are, or they are already locked/finished, don't trigger.
@@ -125,8 +124,8 @@ export default function ActiveExamPage() {
     const triggerDetention = async () => {
       console.log("🚨 Cheating Detected! Locking screen...");
 
-      // Give them a 120-second (2 minute) penalty for leaving the window
-      const penaltyEndTime = new Date(Date.now() + 120000).toISOString();
+      // 🔧 FIX: Changed to 180 seconds (3 minutes) as requested
+      const penaltyEndTime = new Date(Date.now() + 180000).toISOString();
 
       setIsDetention(true);
       setDetentionEndTime(penaltyEndTime);
@@ -159,6 +158,7 @@ export default function ActiveExamPage() {
       window.removeEventListener("blur", handleWindowBlur);
     };
   }, [studentId, isFinished, isDetention]);
+
   // 3. ANTI-CHEAT: Detention Timer Countdown
   useEffect(() => {
     if (!isDetention || !detentionEndTime) return;
@@ -177,7 +177,7 @@ export default function ActiveExamPage() {
         // Free the student in the database
         await supabase
           .from("students")
-          .update({ status: "active", detention_end_time: null })
+          .update({ detention_end_time: null })
           .eq("id", studentId);
       } else {
         setTimeLeft(remainingSeconds);

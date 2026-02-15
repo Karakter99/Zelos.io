@@ -1,21 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { supabase } from "../../utils/Supabase/client";
 import Navbar from "../../components/Navbar";
 import {
   UploadCloud,
-  X,
   Check,
-  Save,
-  Download,
+  Send,
+  HelpCircle,
   Eye,
   History,
-  HelpCircle,
-  Search,
-  Send,
+  Download,
 } from "lucide-react";
 
 interface Question {
@@ -36,11 +33,41 @@ interface ExcelQuestionRow {
 export default function CreateExamPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [teacherEmail, setTeacherEmail] = useState<string | null>(null);
+
   const [examTitle, setExamTitle] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
-  // --- DOWNLOAD TEMPLATE FUNCTION ---
+  // Check authentication on mount
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/teacher/login");
+        return;
+      }
+
+      setTeacherId(user.id);
+      setTeacherEmail(user.email || null);
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.push("/teacher/login");
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
+  // Download template function
   const downloadTemplate = () => {
     const templateData: ExcelQuestionRow[] = [
       {
@@ -49,7 +76,7 @@ export default function CreateExamPage() {
         option2: "4",
         option3: "5",
         option4: "6",
-        answer: "4", // Note: It's usually best to put the exact answer text to avoid confusion!
+        answer: "4",
       },
       {
         text: "What is the capital of France?",
@@ -86,16 +113,15 @@ export default function CreateExamPage() {
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
 
-        // Ensure we handle missing fields safely so the preview doesn't crash
         const formattedQuestions = (data as ExcelQuestionRow[])
           .map((q) => ({
             text: q.text ?? "",
             options: [q.option1, q.option2, q.option3, q.option4].filter(
               Boolean,
-            ), // Filter removes undefined options
+            ),
             answer: q.answer ?? "",
           }))
-          .filter((q) => q.text !== ""); // Ignore completely empty rows
+          .filter((q) => q.text !== "");
 
         setQuestions(formattedQuestions);
       } catch (err: unknown) {
@@ -113,17 +139,32 @@ export default function CreateExamPage() {
       alert("Please enter a title and upload some questions!");
       return;
     }
+
+    if (!teacherId) {
+      alert("You must be logged in to create an exam!");
+      router.push("/teacher/login");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
       console.log("1. Starting Exam Upload...");
 
-      // Step 1: Create the Exam and explicitly ask Supabase to return the new ID
+      // Step 1: Create the Exam linked to this teacher
       const { data: exam, error: examError } = await supabase
         .from("exams")
-        .insert([{ title: examTitle, code: code, is_active: true }])
-        .select("id") // Force Supabase to return the ID
+        .insert([
+          {
+            title: examTitle,
+            code: code,
+            is_active: true,
+            teacher_id: teacherId, // ✅ Link to logged-in teacher
+            created_by_email: teacherEmail,
+          },
+        ])
+        .select("id")
         .single();
 
       if (examError) {
@@ -136,13 +177,12 @@ export default function CreateExamPage() {
 
       console.log("2. Exam Created! ID:", exam.id);
 
-      // Step 2: Prepare the Questions Payload using the new exam.id
-      // Create the Questions Records Payload
+      // Step 2: Prepare the Questions Payload
       const questionPayload = questions.map((q) => ({
         exam_id: exam.id,
         text: q.text,
         options: q.options,
-        answer: String(q.answer), // must match database column
+        answer: String(q.answer),
         type: "multiple_choice",
       }));
 
@@ -164,7 +204,6 @@ export default function CreateExamPage() {
       router.push("/teacher");
     } catch (err: unknown) {
       console.error("Database Error:", err);
-      // Safely extract the exact error message Supabase is throwing
       const errorMessage =
         err instanceof Error ? err.message : "Unknown error occurred";
       alert("❌ " + errorMessage);
@@ -172,6 +211,14 @@ export default function CreateExamPage() {
       setLoading(false);
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-[#FFD700] flex items-center justify-center font-black text-6xl">
+        Checking Authentication...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f8f8] flex flex-col font-sans selection:bg-[#25c0f4] selection:text-black">
@@ -312,22 +359,15 @@ export default function CreateExamPage() {
             </div>
           )}
 
-          {/* Help & History Section */}
+          {/* Help Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-32">
             <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_#000]">
               <h3 className="text-2xl font-black uppercase mb-4 flex items-center gap-2 text-black">
                 <History className="w-6 h-6" /> Recently Uploaded
               </h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-[#f5f8f8] border-2 border-black">
-                  <span className="font-bold uppercase text-black">
-                    Science_Quiz_V2.xlsx
-                  </span>
-                  <span className="text-xs font-black opacity-50 uppercase">
-                    Today
-                  </span>
-                </div>
-              </div>
+              <p className="text-sm text-black/60 font-bold">
+                Your recent uploads will appear here
+              </p>
             </div>
 
             <div className="border-4 border-black bg-[#25c0f4] p-6 shadow-[6px_6px_0px_0px_#000] flex flex-col justify-center items-center text-center">
@@ -339,11 +379,11 @@ export default function CreateExamPage() {
                 Spreadsheet must have headers: text, option1, option2, option3,
                 option4, answer.
               </p>
-              {/* ATTACHED THE FUNCTION HERE */}
               <button
                 onClick={downloadTemplate}
-                className="mt-4 underline decoration-4 font-black uppercase text-black text-lg hover:text-white transition-colors"
+                className="mt-4 flex items-center gap-2 underline decoration-4 font-black uppercase text-black text-lg hover:text-white transition-colors"
               >
+                <Download className="w-5 h-5" />
                 Download Template
               </button>
             </div>

@@ -62,7 +62,8 @@ export default function ExamEntryPage() {
       sessionStorage.setItem("activeExamCode", cleanCode);
       sessionStorage.setItem("activeStudentName", fullStudentName);
 
-      router.push("/exam/start");
+      // 🔧 FIX: Route to /exam/live which has the anti-cheat detection!
+      router.push("/exam/live");
     } catch (error: unknown) {
       console.error("Join Error:", error);
 

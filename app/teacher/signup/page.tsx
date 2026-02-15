@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GraduationCap, SquareTerminal } from "lucide-react";
+import { GraduationCap, SquareTerminal, Eye, EyeOff } from "lucide-react";
 import Navbar from "../../components/Navbar";
 import SuccessOverlay from "../../components/SuccessOverlay";
 import { supabase } from "../../utils/Supabase/client";
@@ -11,6 +11,7 @@ import { supabase } from "../../utils/Supabase/client";
 export default function TeacherSignUp() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // State for the success overlay
   const [showSuccess, setShowSuccess] = useState(false);
@@ -21,37 +22,89 @@ export default function TeacherSignUp() {
   const [schoolName, setSchoolName] = useState("");
   const [password, setPassword] = useState("");
 
+  // Error states
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const validateForm = () => {
+    if (!fullName.trim()) {
+      setErrorMessage("Please enter your full name");
+      return false;
+    }
+    if (!email.trim() || !email.includes("@")) {
+      setErrorMessage("Please enter a valid email address");
+      return false;
+    }
+    if (password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters long");
+      return false;
+    }
+    return true;
+  };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // 1. Send the data to Supabase Auth
+      // 1. Create auth user with Supabase Auth
       const { data, error } = await supabase.auth.signUp({
-        email: email,
+        email: email.trim(),
         password: password,
         options: {
           data: {
-            // This safely stores their extra info in their user profile
-            full_name: fullName,
-            school_name: schoolName,
+            // This data gets stored in auth.users.raw_user_meta_data
+            // Our trigger will read it to create the teacher profile
+            full_name: fullName.trim(),
+            school_name: schoolName.trim() || null,
           },
+          emailRedirectTo: `${window.location.origin}/teacher/login`,
         },
       });
 
       if (error) throw error;
 
-      // 2. Success! Trigger the overlay instead of routing instantly
+      // 2. Check if email confirmation is required
+      if (data.user && !data.session) {
+        // Email confirmation required
+        setErrorMessage(
+          "✅ Account created! Please check your email to verify your account before logging in.",
+        );
+        setLoading(false);
+
+        // Redirect to login after 3 seconds
+        setTimeout(() => {
+          router.push("/teacher/login");
+        }, 3000);
+        return;
+      }
+
+      // 3. Success! User is automatically logged in
+      // The trigger automatically created their teacher profile
       setShowSuccess(true);
     } catch (error: unknown) {
+      console.error("Signup error:", error);
+
       if (error instanceof Error) {
-        console.error(error);
-        alert("Error: " + error.message);
+        // Handle specific Supabase errors
+        if (error.message.includes("User already registered")) {
+          setErrorMessage(
+            "This email is already registered. Please log in instead.",
+          );
+        } else if (error.message.includes("Email rate limit exceeded")) {
+          setErrorMessage("Too many signup attempts. Please try again later.");
+        } else {
+          setErrorMessage(error.message);
+        }
       } else {
-        console.error(error);
-        alert("An unknown error occurred");
+        setErrorMessage("An unexpected error occurred. Please try again.");
       }
-      setLoading(false); // Only stop loading if it fails!
+      setLoading(false);
     }
   };
 
@@ -85,24 +138,6 @@ export default function TeacherSignUp() {
       >
         C
       </div>
-      <div
-        className="absolute z-0 font-black text-transparent opacity-20 pointer-events-none select-none text-[15rem] -bottom-10 left-20 rotate-6 hidden md:block"
-        style={{ WebkitTextStroke: "2px black" }}
-      >
-        X
-      </div>
-      <div
-        className="absolute z-0 font-black text-transparent opacity-20 pointer-events-none select-none text-9xl top-1/2 left-10 rotate-12"
-        style={{ WebkitTextStroke: "2px black" }}
-      >
-        Y
-      </div>
-      <div
-        className="absolute z-0 font-black text-transparent opacity-20 pointer-events-none select-none text-8xl bottom-1/3 right-1/3 -rotate-12 hidden lg:block"
-        style={{ WebkitTextStroke: "2px black" }}
-      >
-        Z
-      </div>
 
       {/* --- Main Content Area --- */}
       <main className="flex-grow flex items-center justify-center p-6 relative z-10 w-full mb-20">
@@ -135,12 +170,25 @@ export default function TeacherSignUp() {
               </p>
             </div>
 
+            {/* Error/Success Message */}
+            {errorMessage && (
+              <div
+                className={`p-4 border-4 font-bold text-sm ${
+                  errorMessage.startsWith("✅")
+                    ? "bg-[#00E57A] border-black"
+                    : "bg-[#FF6B9E] border-black"
+                }`}
+              >
+                {errorMessage}
+              </div>
+            )}
+
             {/* Form */}
             <form className="flex flex-col gap-5" onSubmit={handleSignUp}>
               {/* Full Name */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
-                  Full Name
+                  Full Name *
                 </label>
                 <input
                   type="text"
@@ -149,13 +197,14 @@ export default function TeacherSignUp() {
                   className="w-full border-[3px] border-black p-4 text-black font-bold placeholder:text-black/40 rounded-none bg-white focus:outline-none focus:shadow-[4px_4px_0px_0px_#25c0f4] focus:border-black transition-shadow"
                   placeholder="e.g. Jane Doe"
                   required
+                  disabled={loading}
                 />
               </div>
 
               {/* Email Address */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
-                  Email Address
+                  Email Address *
                 </label>
                 <input
                   type="email"
@@ -164,13 +213,14 @@ export default function TeacherSignUp() {
                   className="w-full border-[3px] border-black p-4 text-black font-bold placeholder:text-black/40 rounded-none bg-white focus:outline-none focus:shadow-[4px_4px_0px_0px_#25c0f4] focus:border-black transition-shadow"
                   placeholder="name@school.edu"
                   required
+                  disabled={loading}
                 />
               </div>
 
               {/* School Name */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
-                  School Name
+                  School Name (Optional)
                 </label>
                 <input
                   type="text"
@@ -178,25 +228,42 @@ export default function TeacherSignUp() {
                   onChange={(e) => setSchoolName(e.target.value)}
                   className="w-full border-[3px] border-black p-4 text-black font-bold placeholder:text-black/40 rounded-none bg-white focus:outline-none focus:shadow-[4px_4px_0px_0px_#25c0f4] focus:border-black transition-shadow"
                   placeholder="Springfield Elementary"
-                  required
+                  disabled={loading}
                 />
               </div>
 
               {/* Password */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
-                  Password
+                  Password *
                 </label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full border-[3px] border-black p-4 text-black font-bold placeholder:text-black/40 rounded-none bg-white focus:outline-none focus:shadow-[4px_4px_0px_0px_#25c0f4] focus:border-black transition-shadow"
+                    className="w-full border-[3px] border-black p-4 pr-12 text-black font-bold placeholder:text-black/40 rounded-none bg-white focus:outline-none focus:shadow-[4px_4px_0px_0px_#25c0f4] focus:border-black transition-shadow"
                     placeholder="••••••••"
                     required
+                    disabled={loading}
+                    minLength={6}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-black/40 hover:text-black transition-colors"
+                    disabled={loading}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-6 h-6" />
+                    ) : (
+                      <Eye className="w-6 h-6" />
+                    )}
+                  </button>
                 </div>
+                <p className="text-xs text-black/60 font-medium">
+                  Must be at least 6 characters
+                </p>
               </div>
 
               {/* Action Button */}

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Navbar from "../../components/Navbar"; // Reusing your existing Navbar
+import Navbar from "../../components/Navbar";
 import SuccessOverlay from "../../components/SuccessOverlay";
 import { supabase } from "../../utils/Supabase/client";
 
@@ -20,22 +20,29 @@ export default function TeacherLogin() {
   const [resendSuccess, setResendSuccess] = useState(false);
 
   const handleResendConfirmation = async () => {
-    if (!email.trim()) return;
+    if (!email.trim()) {
+      setErrorMessage("Please enter your email address first");
+      return;
+    }
+
     setResendLoading(true);
     setResendSuccess(false);
     setErrorMessage(null);
+
     try {
       const { error } = await supabase.auth.resend({
         type: "signup",
         email: email.trim(),
       });
+
       if (error) {
         setErrorMessage(error.message);
       } else {
         setResendSuccess(true);
         setErrorMessage(null);
       }
-    } catch {
+    } catch (err) {
+      console.error("Resend error:", err);
       setErrorMessage("Could not send email. Try again.");
     } finally {
       setResendLoading(false);
@@ -49,21 +56,56 @@ export default function TeacherLogin() {
     setResendSuccess(false);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // 1. Sign in with Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
 
       if (error) {
-        // Show the exact message from Supabase (e.g. "Invalid login credentials" or "Email not confirmed")
         setErrorMessage(error.message);
         setLoading(false);
         return;
       }
 
-      setShowSuccess(true);
+      // 2. Check if user has a teacher profile
+      if (data.user) {
+        const { data: profile, error: profileError } = await supabase
+          .from("teacher_profiles")
+          .select("*")
+          .eq("id", data.user.id)
+          .single();
+
+        if (profileError || !profile) {
+          // Profile doesn't exist - this shouldn't happen with our trigger
+          // but handle it gracefully
+          console.error("Profile not found:", profileError);
+          setErrorMessage(
+            "Account setup incomplete. Please contact support or sign up again.",
+          );
+          await supabase.auth.signOut();
+          setLoading(false);
+          return;
+        }
+
+        // 3. Record login session
+        try {
+          await supabase.from("teacher_sessions").insert({
+            teacher_id: data.user.id,
+            login_at: new Date().toISOString(),
+            ip_address: null, // Browser doesn't expose IP
+            user_agent: navigator.userAgent,
+          });
+        } catch (sessionError) {
+          // Non-critical error, don't block login
+          console.warn("Session tracking failed:", sessionError);
+        }
+
+        // 4. Success!
+        setShowSuccess(true);
+      }
     } catch (err: unknown) {
-      console.error("System Error:", err);
+      console.error("Login Error:", err);
       setErrorMessage("Could not reach the server. Check your connection.");
       setLoading(false);
     }
@@ -99,18 +141,6 @@ export default function TeacherLogin() {
       >
         X
       </div>
-      <div
-        className="absolute z-0 font-black text-transparent opacity-15 pointer-events-none select-none text-[14rem] top-20 right-1/4 rotate-45"
-        style={{ WebkitTextStroke: "2px #000" }}
-      >
-        Y
-      </div>
-      <div
-        className="absolute z-0 font-black text-transparent opacity-15 pointer-events-none select-none text-[8rem] bottom-1/4 left-1/3 rotate-12"
-        style={{ WebkitTextStroke: "2px #000" }}
-      >
-        C
-      </div>
 
       {/* --- Main Content --- */}
       <main className="flex-grow flex items-center justify-center p-6 relative z-10">
@@ -130,10 +160,11 @@ export default function TeacherLogin() {
             {errorMessage && (
               <div className="p-4 bg-red-100 border-2 border-red-500 text-red-800 text-sm font-bold rounded-lg space-y-2">
                 <p>{errorMessage}</p>
-                {errorMessage === "Email not confirmed" && (
+                {errorMessage.includes("Email not confirmed") && (
                   <div className="pt-2 space-y-2">
                     <p className="text-red-700 font-normal text-xs">
-                      Check your inbox (and spam) for the confirmation link, or resend it below.
+                      Check your inbox (and spam) for the confirmation link, or
+                      resend it below.
                     </p>
                     <button
                       type="button"
@@ -152,6 +183,7 @@ export default function TeacherLogin() {
                 )}
               </div>
             )}
+
             {/* Email Field */}
             <div className="flex flex-col gap-2">
               <label className="text-black text-sm font-black uppercase tracking-widest ml-1">
@@ -165,6 +197,7 @@ export default function TeacherLogin() {
                   className="w-full h-16 bg-white border-4 border-black px-6 text-lg font-bold text-black placeholder:text-black/30 focus:ring-0 focus:outline-none focus:bg-[#25c0f4]/10 transition-colors rounded-full shadow-[4px_4px_0px_0px_#000] focus:shadow-[2px_2px_0px_0px_#000] focus:translate-x-[2px] focus:translate-y-[2px]"
                   placeholder="name@school.edu"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -175,12 +208,12 @@ export default function TeacherLogin() {
                 <label className="text-black text-sm font-black uppercase tracking-widest">
                   PASSWORD
                 </label>
-                <a
+                <Link
+                  href="/teacher/forgot-password"
                   className="text-[#25c0f4] font-bold text-sm hover:underline decoration-2"
-                  href="#"
                 >
                   FORGOT?
-                </a>
+                </Link>
               </div>
               <div className="relative flex items-center">
                 <input
@@ -190,13 +223,19 @@ export default function TeacherLogin() {
                   className="w-full h-16 bg-white border-4 border-black px-6 pr-14 text-lg font-bold text-black placeholder:text-black/30 focus:ring-0 focus:outline-none focus:bg-[#25c0f4]/10 transition-colors rounded-full shadow-[4px_4px_0px_0px_#000] focus:shadow-[2px_2px_0px_0px_#000] focus:translate-x-[2px] focus:translate-y-[2px]"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-6 text-black/40 hover:text-black transition-colors"
+                  disabled={loading}
                 >
-                  <Eye className="w-6 h-6" />
+                  {showPassword ? (
+                    <EyeOff className="w-6 h-6" />
+                  ) : (
+                    <Eye className="w-6 h-6" />
+                  )}
                 </button>
               </div>
             </div>

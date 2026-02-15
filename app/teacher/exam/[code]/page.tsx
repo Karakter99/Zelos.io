@@ -12,6 +12,7 @@ import {
   Lock,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 
 interface Exam {
   id: string;
@@ -142,6 +143,7 @@ export default function LiveCheatMonitor() {
                 </div>
               </div>
             </div>
+
             <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-4 animate-pulse">
               <AlertTriangle className="w-10 h-10 text-black stroke-[3]" />
               <div>
@@ -153,6 +155,12 @@ export default function LiveCheatMonitor() {
                 </div>
               </div>
             </div>
+            <Link
+              href={`/teacher/results/${examCode}`}
+              className="bg-[#FFE600] border-4 border-black text-black px-6 py-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+            >
+              View Results →
+            </Link>
           </div>
         </div>
 

@@ -5,9 +5,11 @@ import Link from "next/link";
 import { supabase } from "../utils/Supabase/client";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { Trash2, AlertTriangle } from "lucide-react";
+import { Trash2, AlertTriangle, Download } from "lucide-react";
 
-// Array of colors to cycle through for the cards, exactly like your image
+// 🟢 Import SheetJS for Excel downloads
+import * as XLSX from "xlsx";
+
 const cardColors = ["bg-[#FF6B9E]", "bg-[#5A87FF]", "bg-[#FFE600]", "bg-white"];
 
 type Exam = {
@@ -24,7 +26,6 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     const fetchExams = async () => {
-      // Fetch all exams created by teachers
       const { data, error } = await supabase
         .from("exams")
         .select("*")
@@ -37,7 +38,6 @@ export default function TeacherDashboard() {
     fetchExams();
   }, []);
 
-  // Helper to format dates like "OCT 26, 2024"
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date
@@ -51,11 +51,9 @@ export default function TeacherDashboard() {
 
   // 🗑️ Handle Exam Deletion
   const handleDelete = async (e: React.MouseEvent, examId: string) => {
-    // Stop the <Link> component from navigating to the exam page when clicking delete
     e.preventDefault();
     e.stopPropagation();
 
-    // Confirm before deleting
     if (
       !window.confirm(
         "⚠️ WARNING: Are you sure you want to delete this exam? All student results will be lost forever!",
@@ -65,16 +63,82 @@ export default function TeacherDashboard() {
     }
 
     try {
-      // Delete from Supabase Database
       const { error } = await supabase.from("exams").delete().eq("id", examId);
-
       if (error) throw error;
-
-      // Update the UI instantly by filtering out the deleted exam
       setExams((prevExams) => prevExams.filter((exam) => exam.id !== examId));
     } catch (err: unknown) {
       console.error("Delete Error:", err);
       alert("Failed to delete the exam.");
+    }
+  };
+
+  // 📥 🟢 HANDLE DOWNLOADING RESULTS TO EXCEL 🟢
+  const handleDownloadResults = async (
+    e: React.MouseEvent,
+    examCode: string,
+    examTitle: string | null,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      // 1. Fetch all students who took this specific exam
+      const { data: students, error: studentErr } = await supabase
+        .from("students")
+        .select("*")
+        .ilike("exam_code", `%${examCode}%`);
+
+      if (studentErr) throw studentErr;
+
+      if (!students || students.length === 0) {
+        alert("No students have taken this exam yet!");
+        return;
+      }
+
+      // 2. Fetch the total number of questions to calculate percentages
+      const { data: examData } = await supabase
+        .from("exams")
+        .select("id")
+        .eq("code", examCode)
+        .single();
+      let totalQuestions = 1;
+
+      if (examData) {
+        const { count } = await supabase
+          .from("questions")
+          .select("*", { count: "exact", head: true })
+          .eq("exam_id", examData.id);
+        if (count) totalQuestions = count;
+      }
+
+      // 3. Format the data for Excel
+      const excelData = students.map((s) => {
+        const correct = s.score || 0;
+        const mistakes = totalQuestions - correct;
+        const percentage = Math.round((correct / totalQuestions) * 100) || 0;
+
+        return {
+          "Student Name": s.name,
+          Status: s.status === "finished" ? "Completed" : "Incomplete",
+          "Correct Answers": correct,
+          Mistakes: mistakes,
+          "Final Score (%)": `${percentage}%`,
+          "Caught Cheating?": s.detention_end_time ? "YES 🚨" : "No",
+        };
+      });
+
+      // 4. Generate and download the file
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Grades");
+
+      const safeTitle = examTitle
+        ? examTitle.replace(/[^a-z0-9]/gi, "_")
+        : "Exam";
+      XLSX.writeFile(workbook, `${safeTitle}_Results.xlsx`);
+    } catch (err: unknown) {
+      console.error("Download Error:", err);
+      alert("Failed to generate Excel file. Check console for details.");
     }
   };
 
@@ -89,13 +153,11 @@ export default function TeacherDashboard() {
     >
       <Navbar />
 
-      {/* --- Main Dashboard Content --- */}
       <main className="flex-grow flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-12 relative z-10 max-w-[1600px] mx-auto w-full">
-        {/* Decorative Grid Lines (Behind content) */}
         <div className="absolute top-0 bottom-0 left-[340px] w-2 bg-black hidden md:block z-0 -ml-4" />
         <div className="absolute top-[200px] left-[340px] right-0 h-2 bg-black hidden md:block z-0" />
 
-        {/* 1. LEFT SIDEBAR (Green Block) */}
+        {/* 1. LEFT SIDEBAR */}
         <nav className="w-full md:w-72 bg-[#00E57A] border-[6px] border-black shadow-[16px_16px_0px_0px_#000] p-8 md:p-10 flex flex-col gap-8 h-fit z-10 shrink-0">
           <Link
             href="/teacher"
@@ -125,7 +187,6 @@ export default function TeacherDashboard() {
 
         {/* 2. RIGHT CONTENT AREA */}
         <div className="flex-1 flex flex-col gap-12 z-10 w-full">
-          {/* Top Banner Button */}
           <Link
             href="/teacher/create"
             className="bg-white border-[6px] border-black shadow-[16px_16px_0px_0px_#000] p-6 md:p-10 text-center hover:translate-x-2 hover:translate-y-2 hover:shadow-[8px_8px_0px_0px_#000] active:translate-x-4 active:translate-y-4 active:shadow-none transition-all group"
@@ -135,7 +196,6 @@ export default function TeacherDashboard() {
             </h1>
           </Link>
 
-          {/* ⚠️ 2-MONTH DELETION WARNING BANNER */}
           <div className="bg-black text-white border-[6px] border-black shadow-[8px_8px_0px_0px_#FF6B9E] p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
             <div className="bg-[#FF6B9E] p-3 border-4 border-black shrink-0 animate-pulse">
               <AlertTriangle className="w-10 h-10 text-black stroke-[3]" />
@@ -146,7 +206,7 @@ export default function TeacherDashboard() {
               </h3>
               <p className="font-bold uppercase text-sm md:text-base text-white/80">
                 To maintain server speed, all exams and student data are
-                automatically permanently deleted{" "}
+                automatically deleted{" "}
                 <span className="text-white underline decoration-[#FF6B9E] decoration-4 underline-offset-4">
                   2 months after creation
                 </span>
@@ -173,13 +233,12 @@ export default function TeacherDashboard() {
             )}
 
             {exams.map((exam, index) => {
-              // Cycle through the colors array based on the index
               const colorClass = cardColors[index % cardColors.length];
               const isDraft = !exam.is_active;
 
               return (
                 <Link
-                  href={`/teacher/exam/${exam.code}`}
+                  href={`/teacher/monitor/${exam.code}`}
                   key={exam.id}
                   className={`${colorClass} border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 md:p-10 flex flex-col justify-between aspect-video md:aspect-auto md:min-h-[280px] hover:translate-x-2 hover:translate-y-2 hover:shadow-[4px_4px_0px_0px_#000] transition-all cursor-pointer group`}
                 >
@@ -188,14 +247,26 @@ export default function TeacherDashboard() {
                       {exam.title || "Untitled Exam"}
                     </h2>
 
-                    {/* 🗑️ DELETE BUTTON */}
-                    <button
-                      onClick={(e) => handleDelete(e, exam.id)}
-                      className="bg-white text-black border-4 border-black p-3 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-black hover:text-[#FF6B9E] transition-all shrink-0"
-                      title="Delete Exam"
-                    >
-                      <Trash2 className="w-8 h-8 stroke-[3]" />
-                    </button>
+                    {/* 🟢 ACTION BUTTONS: DOWNLOAD & DELETE */}
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button
+                        onClick={(e) =>
+                          handleDownloadResults(e, exam.code, exam.title)
+                        }
+                        className="bg-white text-black border-4 border-black p-3 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-[#a855f7] hover:text-white transition-all group/btn"
+                        title="Download Results to Excel"
+                      >
+                        <Download className="w-8 h-8 stroke-[3] group-hover/btn:animate-bounce" />
+                      </button>
+
+                      <button
+                        onClick={(e) => handleDelete(e, exam.id)}
+                        className="bg-white text-black border-4 border-black p-3 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-black hover:text-[#FF6B9E] transition-all"
+                        title="Delete Exam"
+                      >
+                        <Trash2 className="w-8 h-8 stroke-[3]" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex justify-between items-end mt-12 font-black text-black uppercase tracking-widest text-sm md:text-base">
@@ -210,7 +281,6 @@ export default function TeacherDashboard() {
           </div>
         </div>
       </main>
-
       <Footer />
     </div>
   );

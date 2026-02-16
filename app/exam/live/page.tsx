@@ -9,7 +9,7 @@ interface Question {
   id: string;
   text: string;
   options: string[];
-  correct_answer: string;
+  answer: string; // 🟢 FIX 1: Looks for 'answer' in the questions table
 }
 
 // Math Problem Generator for Detention
@@ -42,9 +42,8 @@ export default function ActiveExamPage() {
   const [selectedOption, setSelectedOption] = useState("");
   const [isFinished, setIsFinished] = useState(false);
   const [studentId, setStudentId] = useState("");
-  const [examId, setExamId] = useState(""); // 🟢 NEW: Store the Exam ID for the answers table
+  const [examId, setExamId] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-
   const [score, setScore] = useState(0);
 
   // Anti-Cheat State
@@ -100,13 +99,12 @@ export default function ActiveExamPage() {
           .single();
 
         if (examErr || !examData) throw new Error("Could not find exam.");
-
-        // 🟢 Save the examId to state so we can use it when submitting answers!
         setExamId(examData.id);
 
+        // 🟢 FIX 2: Ask Supabase specifically for 'answer'
         const { data: qData, error: qErr } = await supabase
           .from("questions")
-          .select("id, text, options, correct_answer")
+          .select("id, text, options, answer")
           .eq("exam_id", examData.id);
 
         if (qErr) throw qErr;
@@ -230,8 +228,7 @@ export default function ActiveExamPage() {
     }
   };
 
-  // 5. 🟢 PERFECTLY MATCHED AUTO-GRADER 🟢
-  // 5. 🟢 PERFECTLY MATCHED AUTO-GRADER 🟢
+  // 5. 🟢 PERFECT AUTO-GRADER 🟢
   const handleNextQuestion = async () => {
     if (!selectedOption) {
       setErrorMsg("⚠️ YOU MUST SELECT AN ANSWER!");
@@ -243,18 +240,35 @@ export default function ActiveExamPage() {
       const isLastQuestion = currentIndex === questions.length - 1;
       const currentQ = questions[currentIndex];
 
-      // 1. Safety Net: Fallback if the database has a 'null' correct answer
-      const actualCorrectAnswer = currentQ.correct_answer || "Not Set";
+      // Figure out which LETTER the student clicked (A, B, C, or D)
+      const optionIndex = currentQ.options.indexOf(selectedOption);
+      const studentLetter = String.fromCharCode(65 + optionIndex);
 
-      // 2. Check if it's correct and update score
-      const isCorrect = selectedOption === actualCorrectAnswer;
+      // 🟢 FIX 3: Pull the expected LETTER directly from 'currentQ.answer'
+      const dbCorrectLetter = (currentQ.answer || "NOT SET")
+        .trim()
+        .toUpperCase();
+
+      const isCorrect = studentLetter === dbCorrectLetter;
+
+      // 🚨 LOUD DEBUGGER: Check F12 Console!
+      console.log("----------------------------------");
+      console.log("📝 Question:", currentQ.text);
+      console.log(
+        "🧑‍🎓 Picked:",
+        `"${selectedOption}" (Letter: ${studentLetter})`,
+      );
+      console.log("🎯 Expected:", `Letter: ${dbCorrectLetter}`);
+      console.log("✅ Graded As:", isCorrect ? "CORRECT (+1)" : "WRONG (0)");
+      console.log("----------------------------------");
+
       let newScore = score;
       if (isCorrect) {
         newScore += 1;
         setScore(newScore);
       }
 
-      // 3. 🟢 INSERT PERFECTLY FORMATTED DATA INTO student_answers
+      // 🟢 Save to 'student_answers' using the column names that table expects
       const { error: answerError } = await supabase
         .from("student_answers")
         .insert({
@@ -262,21 +276,20 @@ export default function ActiveExamPage() {
           exam_id: examId,
           question_id: currentQ.id,
           question_text: currentQ.text,
-          selected_answer: selectedOption,
-          correct_answer: actualCorrectAnswer, // 🟢 Never sends 'null' anymore!
+          selected_answer: studentLetter,
+          correct_answer: dbCorrectLetter, // This table expects the name correct_answer
           is_correct: isCorrect,
         });
 
-      // Show loud error if Supabase rejects the insert
       if (answerError) {
         console.error("❌ SUPABASE INSERT ERROR:", answerError.message);
         alert("Database Insert Error: " + answerError.message);
       }
-      // 3. Update the student's progress and total score
+
       if (!isLastQuestion) {
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
-        setSelectedOption(""); // Reset choice for next screen
+        setSelectedOption("");
 
         await supabase
           .from("students")
@@ -302,16 +315,16 @@ export default function ActiveExamPage() {
     }
   };
 
-  // --- LOADING SCREEN ---
+  // --- RENDERING SCREENS ---
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-6xl uppercase border-[16px] border-black">
+      <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-4xl md:text-5xl uppercase border-[8px] border-black">
         Loading Questions...
       </div>
     );
   }
 
-  // --- MATH DETENTION SCREEN ---
   if (isDetention) {
     return (
       <div
@@ -321,29 +334,29 @@ export default function ActiveExamPage() {
           backgroundSize: "32px 32px",
         }}
       >
-        <h1 className="text-6xl md:text-8xl font-black mb-4 tracking-tight bg-white border-[6px] border-black px-8 py-2 shadow-[12px_12px_0px_0px_#000] rotate-2">
+        <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tight bg-white border-[4px] border-black px-8 py-2 shadow-[8px_8px_0px_0px_#000] rotate-2">
           LOCKED OUT
         </h1>
 
-        <div className="text-8xl md:text-9xl font-black bg-white px-10 py-4 mb-12 border-[6px] border-black shadow-[12px_12px_0px_0px_#000] -rotate-1">
+        <div className="text-7xl md:text-8xl font-black bg-white px-10 py-4 mb-10 border-[4px] border-black shadow-[8px_8px_0px_0px_#000] -rotate-1">
           {Math.floor(timeLeft / 60)}:
           {(timeLeft % 60).toString().padStart(2, "0")}
         </div>
 
-        <div className="bg-white p-8 md:p-12 border-[6px] border-black shadow-[16px_16px_0px_0px_#000] w-full max-w-xl text-center">
-          <p className="mb-6 text-black font-black uppercase tracking-widest text-lg flex items-center justify-center gap-2">
-            <AlertTriangle className="w-8 h-8 text-[#FF6B9E]" />
+        <div className="bg-white p-6 md:p-8 border-[4px] border-black shadow-[12px_12px_0px_0px_#000] w-full max-w-lg text-center">
+          <p className="mb-4 text-black font-black uppercase tracking-widest text-sm flex items-center justify-center gap-2">
+            <AlertTriangle className="w-6 h-6 text-[#FF6B9E]" />
             Solve to reduce time (-30s)
           </p>
 
-          <div className="text-6xl md:text-7xl font-black mb-8">
+          <div className="text-5xl md:text-6xl font-black mb-6">
             {problem.text} = ?
           </div>
 
           <input
             type="number"
             autoFocus
-            className="text-black text-5xl font-black text-center p-6 w-full mb-6 outline-none border-[6px] border-black shadow-[8px_8px_0px_0px_#000] focus:translate-x-2 focus:translate-y-2 focus:shadow-none transition-all"
+            className="text-black text-4xl font-black text-center p-4 w-full mb-6 outline-none border-[4px] border-black shadow-[6px_6px_0px_0px_#000] focus:translate-x-1 focus:translate-y-1 focus:shadow-[2px_2px_0px_0px_#000] transition-all"
             value={mathInput}
             onChange={(e) => setMathInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleMathSubmit()}
@@ -352,7 +365,7 @@ export default function ActiveExamPage() {
 
           <button
             onClick={handleMathSubmit}
-            className="w-full bg-[#FFE600] text-black font-black text-3xl uppercase py-6 border-[6px] border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-2 hover:translate-y-2 hover:shadow-none active:bg-black active:text-white transition-all"
+            className="w-full bg-[#FFE600] text-black font-black text-2xl uppercase py-4 border-[4px] border-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:bg-black active:text-white transition-all"
           >
             Submit Answer
           </button>
@@ -361,7 +374,6 @@ export default function ActiveExamPage() {
     );
   }
 
-  // --- CONGRATULATIONS SCREEN ---
   if (isFinished) {
     return (
       <div
@@ -371,24 +383,22 @@ export default function ActiveExamPage() {
           backgroundSize: "32px 32px",
         }}
       >
-        <div className="bg-white border-[8px] border-black shadow-[16px_16px_0px_0px_#000] p-12 md:p-24 max-w-3xl w-full animate-in zoom-in duration-500">
-          <div className="size-32 bg-black text-[#00E57A] flex items-center justify-center mx-auto mb-8 border-4 border-black shadow-[8px_8px_0px_0px_#FFE600] rotate-3">
-            <CheckCircle2 className="w-20 h-20 stroke-[3]" />
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full animate-in zoom-in duration-500">
+          <div className="size-24 bg-black text-[#00E57A] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#FFE600] rotate-3">
+            <CheckCircle2 className="w-16 h-16 stroke-[3]" />
           </div>
-          <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter text-black mb-6 leading-none">
-            Exam
-            <br />
-            Complete!
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-black mb-4 leading-none">
+            Exam Complete!
           </h1>
-          <p className="text-2xl font-bold uppercase tracking-widest text-black/70 mb-12">
-            Your answers have been securely submitted to the teacher.
+          <p className="text-xl font-bold uppercase tracking-widest text-black/70 mb-10">
+            Your answers have been securely submitted.
           </p>
           <button
             onClick={() => {
               sessionStorage.clear();
               router.push("/");
             }}
-            className="w-full bg-[#25c0f4] border-[6px] border-black p-6 text-3xl font-black uppercase text-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-2 hover:translate-y-2 hover:shadow-none transition-all"
+            className="w-full bg-[#25c0f4] border-[4px] border-black p-5 text-2xl font-black uppercase text-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
           >
             Return to Home
           </button>
@@ -397,45 +407,44 @@ export default function ActiveExamPage() {
     );
   }
 
-  // --- ACTIVE QUESTION SCREEN ---
   const currentQuestion = questions[currentIndex];
   const progressPercent = (currentIndex / questions.length) * 100;
 
   return (
     <div
-      className="min-h-screen bg-[#f5f8f8] flex flex-col items-center p-6 font-sans selection:bg-[#FFE600] selection:text-black"
+      className="min-h-screen bg-[#f5f8f8] flex flex-col items-center p-4 md:p-8 font-sans selection:bg-[#FFE600] selection:text-black"
       style={{
         backgroundImage: "radial-gradient(#000 1px, transparent 1px)",
         backgroundSize: "32px 32px",
       }}
     >
-      <header className="w-full max-w-4xl bg-white border-[6px] border-black p-4 flex justify-between items-center shadow-[8px_8px_0px_0px_#000] mb-8 relative overflow-hidden">
+      <header className="w-full max-w-3xl bg-white border-[4px] border-black p-3 flex justify-between items-center shadow-[6px_6px_0px_0px_#000] mb-6 relative overflow-hidden">
         <div
-          className="absolute top-0 left-0 h-full bg-[#25c0f4] border-r-[6px] border-black z-0 transition-all duration-500"
+          className="absolute top-0 left-0 h-full bg-[#25c0f4] border-r-[4px] border-black z-0 transition-all duration-500"
           style={{ width: `${progressPercent}%` }}
         />
-        <div className="bg-black text-white px-4 py-2 font-black uppercase tracking-widest text-sm z-10">
+        <div className="bg-black text-white px-3 py-1 font-black uppercase tracking-widest text-xs z-10">
           Integrity Guard
         </div>
-        <div className="font-black text-2xl uppercase tracking-tighter bg-white px-4 py-1 border-4 border-black z-10">
+        <div className="font-black text-xl uppercase tracking-tighter bg-white px-3 py-1 border-[3px] border-black z-10">
           Q: {currentIndex + 1} / {questions.length}
         </div>
       </header>
 
       {errorMsg && (
-        <div className="w-full max-w-4xl bg-[#FF6B9E] text-black border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-4 font-black uppercase text-center mb-8 animate-pulse">
+        <div className="w-full max-w-3xl bg-[#FF6B9E] text-black border-[4px] border-black shadow-[6px_6px_0px_0px_#000] p-3 font-black uppercase text-center mb-6 animate-pulse text-sm">
           {errorMsg}
         </div>
       )}
 
-      <main className="w-full max-w-4xl flex flex-col gap-8 flex-grow">
-        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 md:p-12">
-          <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-tight text-black">
+      <main className="w-full max-w-3xl flex flex-col gap-6 flex-grow">
+        <div className="bg-white border-[4px] border-black shadow-[8px_8px_0px_0px_#000] p-6 md:p-8">
+          <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter leading-tight text-black">
             {currentQuestion?.text}
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {currentQuestion?.options.map((option, idx) => {
             if (!option) return null;
             const isSelected = selectedOption === option;
@@ -444,17 +453,24 @@ export default function ActiveExamPage() {
               <button
                 key={idx}
                 onClick={() => setSelectedOption(option)}
-                className={`text-left p-6 md:p-8 border-[6px] border-black text-2xl md:text-3xl font-black uppercase tracking-tight transition-all
+                className={`text-left p-4 md:p-6 border-[4px] border-black text-lg md:text-xl font-black uppercase tracking-tight transition-all flex items-center
                   ${
                     isSelected
-                      ? "bg-[#FFE600] shadow-none translate-x-2 translate-y-2"
-                      : "bg-white shadow-[8px_8px_0px_0px_#000] hover:bg-gray-50"
+                      ? "bg-black text-[#00E57A] shadow-none translate-x-1 translate-y-1"
+                      : "bg-white text-black shadow-[6px_6px_0px_0px_#000] hover:bg-gray-50"
                   }`}
               >
-                <span className="bg-black text-white px-3 py-1 mr-4 border-2 border-black">
+                <span
+                  className={`px-3 py-1 mr-4 border-[3px] font-black
+                    ${
+                      isSelected
+                        ? "bg-[#00E57A] text-black border-[#00E57A]"
+                        : "bg-black text-white border-black"
+                    }`}
+                >
                   {String.fromCharCode(65 + idx)}
                 </span>
-                {option}
+                <span className="leading-snug">{option}</span>
               </button>
             );
           })}
@@ -462,14 +478,14 @@ export default function ActiveExamPage() {
 
         <button
           onClick={handleNextQuestion}
-          className="mt-8 bg-[#00E57A] border-[6px] border-black p-8 flex items-center justify-between shadow-[12px_12px_0px_0px_#000] hover:translate-x-2 hover:translate-y-2 hover:shadow-none active:bg-black active:text-white transition-all group"
+          className="mt-4 bg-[#00E57A] border-[4px] border-black p-5 flex items-center justify-between shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none active:bg-black active:text-white transition-all group"
         >
-          <span className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-black">
+          <span className="text-3xl md:text-4xl font-black uppercase tracking-tighter text-black">
             {currentIndex === questions.length - 1
               ? "Submit Exam"
               : "Next Question"}
           </span>
-          <ArrowRight className="w-16 h-16 stroke-[4] transition-transform group-hover:translate-x-4" />
+          <ArrowRight className="w-10 h-10 stroke-[4] transition-transform group-hover:translate-x-3" />
         </button>
       </main>
     </div>

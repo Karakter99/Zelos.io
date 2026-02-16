@@ -9,6 +9,7 @@ interface Question {
   id: string;
   text: string;
   options: string[];
+  correct_answer: string;
 }
 
 // Math Problem Generator for Detention
@@ -41,6 +42,10 @@ export default function ActiveExamPage() {
   const [selectedOption, setSelectedOption] = useState("");
   const [isFinished, setIsFinished] = useState(false);
   const [studentId, setStudentId] = useState("");
+  const [examId, setExamId] = useState(""); // 🟢 NEW: Store the Exam ID for the answers table
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const [score, setScore] = useState(0);
 
   // Anti-Cheat State
   const [isDetention, setIsDetention] = useState(false);
@@ -49,7 +54,7 @@ export default function ActiveExamPage() {
   const [problem, setProblem] = useState(createProblem());
   const [mathInput, setMathInput] = useState("");
 
-  // 1. Initialize Exam & Randomize Questions
+  // 1. Initialize Exam
   useEffect(() => {
     const startExam = async () => {
       try {
@@ -64,6 +69,30 @@ export default function ActiveExamPage() {
 
         setStudentId(storedStudentId);
 
+        const { data: studentData } = await supabase
+          .from("students")
+          .select("status, detention_end_time, score")
+          .eq("id", storedStudentId)
+          .single();
+
+        if (studentData) {
+          if (studentData.score) setScore(studentData.score);
+
+          if (studentData.detention_end_time) {
+            const remainingMs =
+              new Date(studentData.detention_end_time).getTime() - Date.now();
+            if (remainingMs > 0) {
+              setIsDetention(true);
+              setDetentionEndTime(studentData.detention_end_time);
+            } else {
+              await supabase
+                .from("students")
+                .update({ status: "active", detention_end_time: null })
+                .eq("id", storedStudentId);
+            }
+          }
+        }
+
         const { data: examData, error: examErr } = await supabase
           .from("exams")
           .select("id")
@@ -72,15 +101,17 @@ export default function ActiveExamPage() {
 
         if (examErr || !examData) throw new Error("Could not find exam.");
 
+        // 🟢 Save the examId to state so we can use it when submitting answers!
+        setExamId(examData.id);
+
         const { data: qData, error: qErr } = await supabase
           .from("questions")
-          .select("id, text, options")
+          .select("id, text, options, correct_answer")
           .eq("exam_id", examData.id);
 
         if (qErr) throw qErr;
 
         if (qData && qData.length > 0) {
-          // RANDOMIZATION LOGIC
           const savedOrder = localStorage.getItem(
             `order-${storedExamCode}-${storedName}`,
           );
@@ -90,20 +121,19 @@ export default function ActiveExamPage() {
             const orderIds = JSON.parse(savedOrder);
             finalQuestions = orderIds
               .map((id: string) => qData.find((q) => q.id === id))
-              .filter(Boolean);
+              .filter(Boolean) as Question[];
           } else {
-            // Shuffle questions and save order
-            finalQuestions = [...qData].sort(() => Math.random() - 0.5);
+            finalQuestions = [...qData].sort(
+              () => Math.random() - 0.5,
+            ) as Question[];
             localStorage.setItem(
               `order-${storedExamCode}-${storedName}`,
               JSON.stringify(finalQuestions.map((q) => q.id)),
             );
           }
-
           setQuestions(finalQuestions);
         } else {
-          alert("Teacher has not uploaded questions yet!");
-          router.push("/exam");
+          router.push("/exam/start");
         }
       } catch (err: unknown) {
         console.error("Initialization Error:", err);
@@ -116,24 +146,22 @@ export default function ActiveExamPage() {
     startExam();
   }, [router]);
 
-  // 2. ANTI-CHEAT: Listen for Tab Switching & Clicking Off-Screen
+  // 2. ANTI-CHEAT: Listen for Tab Switching
   useEffect(() => {
-    // If we don't know who they are, or they are already locked/finished, don't trigger.
     if (!studentId || isFinished || isDetention) return;
 
     const triggerDetention = async () => {
-      console.log("🚨 Cheating Detected! Locking screen...");
-
-      // 🔧 FIX: Changed to 180 seconds (3 minutes) as requested
-      const penaltyEndTime = new Date(Date.now() + 180000).toISOString();
-
+      const penaltyEndTime = new Date(Date.now() + 120000).toISOString();
       setIsDetention(true);
       setDetentionEndTime(penaltyEndTime);
 
       try {
         await supabase
           .from("students")
-          .update({ detention_end_time: penaltyEndTime })
+          .update({
+            status: "detention",
+            detention_end_time: penaltyEndTime,
+          })
           .eq("id", studentId);
       } catch (err: unknown) {
         console.error("Failed to update detention", err);
@@ -143,13 +171,10 @@ export default function ActiveExamPage() {
     const handleVisibilityChange = () => {
       if (document.hidden) triggerDetention();
     };
-
     const handleWindowBlur = () => {
-      // Triggers the moment the window loses focus (clicking taskbar, another screen, etc)
       triggerDetention();
     };
 
-    // Attach both listeners for maximum security
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleWindowBlur);
 
@@ -174,10 +199,9 @@ export default function ActiveExamPage() {
         setDetentionEndTime(null);
         clearInterval(timer);
 
-        // Free the student in the database
         await supabase
           .from("students")
-          .update({ detention_end_time: null })
+          .update({ status: "active", detention_end_time: null })
           .eq("id", studentId);
       } else {
         setTimeLeft(remainingSeconds);
@@ -190,47 +214,86 @@ export default function ActiveExamPage() {
   // 4. Handle Math Problem Submission
   const handleMathSubmit = async () => {
     if (parseInt(mathInput) === problem.answer) {
-      // Reduce time by 30 seconds
       const currentEnd = new Date(detentionEndTime!).getTime();
       const newEndTime = new Date(currentEnd - 30000).toISOString();
 
       setDetentionEndTime(newEndTime);
-      setProblem(createProblem()); // Generate new problem
+      setProblem(createProblem());
       setMathInput("");
 
-      // Update Database
       await supabase
         .from("students")
         .update({ detention_end_time: newEndTime })
         .eq("id", studentId);
     } else {
-      setMathInput(""); // Clear input on wrong answer
+      setMathInput("");
     }
   };
 
-  // 5. Handle Question Progress
+  // 5. 🟢 PERFECTLY MATCHED AUTO-GRADER 🟢
+  // 5. 🟢 PERFECTLY MATCHED AUTO-GRADER 🟢
   const handleNextQuestion = async () => {
-    if (!selectedOption) return alert("Please select an answer!");
+    if (!selectedOption) {
+      setErrorMsg("⚠️ YOU MUST SELECT AN ANSWER!");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
+    }
 
     try {
       const isLastQuestion = currentIndex === questions.length - 1;
+      const currentQ = questions[currentIndex];
 
+      // 1. Safety Net: Fallback if the database has a 'null' correct answer
+      const actualCorrectAnswer = currentQ.correct_answer || "Not Set";
+
+      // 2. Check if it's correct and update score
+      const isCorrect = selectedOption === actualCorrectAnswer;
+      let newScore = score;
+      if (isCorrect) {
+        newScore += 1;
+        setScore(newScore);
+      }
+
+      // 3. 🟢 INSERT PERFECTLY FORMATTED DATA INTO student_answers
+      const { error: answerError } = await supabase
+        .from("student_answers")
+        .insert({
+          student_id: studentId,
+          exam_id: examId,
+          question_id: currentQ.id,
+          question_text: currentQ.text,
+          selected_answer: selectedOption,
+          correct_answer: actualCorrectAnswer, // 🟢 Never sends 'null' anymore!
+          is_correct: isCorrect,
+        });
+
+      // Show loud error if Supabase rejects the insert
+      if (answerError) {
+        console.error("❌ SUPABASE INSERT ERROR:", answerError.message);
+        alert("Database Insert Error: " + answerError.message);
+      }
+      // 3. Update the student's progress and total score
       if (!isLastQuestion) {
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
-        setSelectedOption("");
+        setSelectedOption(""); // Reset choice for next screen
 
         await supabase
           .from("students")
-          .update({ current_question_index: nextIndex })
+          .update({
+            current_question_index: nextIndex,
+            score: newScore,
+          })
           .eq("id", studentId);
       } else {
         setIsFinished(true);
+
         await supabase
           .from("students")
           .update({
             status: "finished",
             current_question_index: questions.length,
+            score: newScore,
           })
           .eq("id", studentId);
       }
@@ -346,7 +409,6 @@ export default function ActiveExamPage() {
         backgroundSize: "32px 32px",
       }}
     >
-      {/* Progress Bar Header */}
       <header className="w-full max-w-4xl bg-white border-[6px] border-black p-4 flex justify-between items-center shadow-[8px_8px_0px_0px_#000] mb-8 relative overflow-hidden">
         <div
           className="absolute top-0 left-0 h-full bg-[#25c0f4] border-r-[6px] border-black z-0 transition-all duration-500"
@@ -360,7 +422,12 @@ export default function ActiveExamPage() {
         </div>
       </header>
 
-      {/* Question Card */}
+      {errorMsg && (
+        <div className="w-full max-w-4xl bg-[#FF6B9E] text-black border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-4 font-black uppercase text-center mb-8 animate-pulse">
+          {errorMsg}
+        </div>
+      )}
+
       <main className="w-full max-w-4xl flex flex-col gap-8 flex-grow">
         <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 md:p-12">
           <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-tight text-black">
@@ -368,7 +435,6 @@ export default function ActiveExamPage() {
           </h2>
         </div>
 
-        {/* Options Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {currentQuestion?.options.map((option, idx) => {
             if (!option) return null;
@@ -394,7 +460,6 @@ export default function ActiveExamPage() {
           })}
         </div>
 
-        {/* Next/Submit Button */}
         <button
           onClick={handleNextQuestion}
           className="mt-8 bg-[#00E57A] border-[6px] border-black p-8 flex items-center justify-between shadow-[12px_12px_0px_0px_#000] hover:translate-x-2 hover:translate-y-2 hover:shadow-none active:bg-black active:text-white transition-all group"

@@ -247,7 +247,7 @@ export default function CreateExamPage() {
             </div>
 
             <div className="flex flex-col gap-4">
-              <label className="block text-sm font-black uppercase tracking-widest text-black">
+              <label className=" block text-sm font-black uppercase tracking-widest text-black">
                 Exam Title
               </label>
               <input
@@ -255,7 +255,7 @@ export default function CreateExamPage() {
                 value={examTitle}
                 onChange={(e) => setExamTitle(e.target.value)}
                 placeholder="E.G. PHYSICS MIDTERM"
-                className="bg-white border-4 border-black p-4 text-xl font-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                className=" text-black bg-white border-4 border-black p-4 text-xl font-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
               />
             </div>
           </div>
@@ -403,7 +403,7 @@ export default function CreateExamPage() {
         <div className="flex items-center gap-4 w-full md:w-auto">
           <button
             onClick={() => router.push("/teacher")}
-            className="flex-1 md:flex-none px-10 py-4 bg-white border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase"
+            className=" text-red-400 flex-1 md:flex-none px-10 py-4 bg-white border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase"
           >
             Cancel
           </button>

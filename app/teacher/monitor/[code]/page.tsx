@@ -129,12 +129,12 @@ export default function LiveCheatMonitor() {
             <div className="bg-black text-white inline-block px-4 py-1 font-black uppercase tracking-widest text-sm mb-4 border-2 border-black shadow-[4px_4px_0px_0px_#25c0f4]">
               Live Monitor
             </div>
-            <h1 className="text-5xl md:text-7xl font-black text-black uppercase tracking-tighter leading-none">
+            <h1 className="text-5xl text-black md:text-7xl font-black  uppercase tracking-tighter leading-none">
               {exam?.title || "Exam"}
             </h1>
-            <p className="text-2xl font-bold mt-2">
+            <p className=" text-black text-2xl font-bold mt-2">
               CODE:{" "}
-              <span className="bg-[#FFE600] px-2 border-2 border-black">
+              <span className="text-black bg-[white] px-2 border-2x border-black">
                 {examCode}
               </span>
             </p>
@@ -185,7 +185,7 @@ export default function LiveCheatMonitor() {
               <h2 className="text-5xl font-black uppercase mb-4">
                 Awaiting Students...
               </h2>
-              <p className="text-2xl font-bold">
+              <p className="text-2xl font-bold text-black">
                 Share the code <strong>{examCode}</strong> with your class. They
                 will appear here instantly.
               </p>

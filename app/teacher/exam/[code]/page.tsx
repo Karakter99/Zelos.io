@@ -111,7 +111,7 @@ export default function LiveCheatMonitor() {
             <h1 className="text-5xl md:text-7xl font-black text-black uppercase tracking-tighter leading-none">
               {exam?.title || "Exam"}
             </h1>
-            <p className="text-2xl font-bold mt-2">
+            <p className="text-black text-2xl font-bold mt-2">
               CODE:{" "}
               <span className="bg-[#FFE600] px-2 border-2 border-black">
                 {examCode}

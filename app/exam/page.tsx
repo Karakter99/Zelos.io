@@ -85,7 +85,7 @@ export default function ExamEntryPage() {
       }}
     >
       <Navbar />
-      <main className="flex-grow flex flex-col items-center justify-center p-4 z-10 w-full mb-12">
+      <main className=" text-black flex-grow flex flex-col items-center justify-center p-4 z-10 w-full mb-12">
         <div className="bg-white border-8 border-black shadow-[20px_20px_0px_0px_#000] p-8 md:p-16 w-full max-w-4xl flex flex-col gap-8">
           <input
             className="w-full text-2xl md:text-5xl font-black p-6 border-4 border-black shadow-[6px_6px_0px_0px_#000] outline-none uppercase placeholder:text-black/20"

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation"; // 🟢 Added router for kicking out non-logged-in users
 import { supabase } from "../utils/Supabase/client";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -21,22 +22,49 @@ type Exam = {
 };
 
 export default function TeacherDashboard() {
+  const router = useRouter();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 1. 🟢 FETCH ONLY THIS TEACHER'S EXAMS 🟢
   useEffect(() => {
     const fetchExams = async () => {
-      const { data, error } = await supabase
-        .from("exams")
-        .select("*")
-        .order("created_at", { ascending: false });
+      try {
+        // Step A: Find out who is currently logged in
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
 
-      if (data) setExams(data);
-      setLoading(false);
+        // 🟢 FIX: If there is a Zombie Token or no user, kill the session completely!
+        if (authError || !user) {
+          console.warn(
+            "Auth error or no user found. Clearing ghost session...",
+          );
+          await supabase.auth.signOut(); // 🧹 Wipes the corrupted token from the browser
+          router.push("/"); // 🥾 Kicks them back to your home/login page
+          return;
+        }
+
+        // Step B: Ask the database ONLY for exams matching their ID
+        const { data, error: dbError } = await supabase
+          .from("exams")
+          .select("*")
+          .eq("teacher_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (dbError) throw dbError;
+
+        if (data) setExams(data);
+      } catch (err: unknown) {
+        console.error("Error fetching exams:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchExams();
-  }, []);
+  }, [router]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -72,7 +100,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  // 📥 🟢 HANDLE DOWNLOADING RESULTS TO EXCEL 🟢
+  // 📥 HANDLE DOWNLOADING RESULTS TO EXCEL
   const handleDownloadResults = async (
     e: React.MouseEvent,
     examCode: string,
@@ -82,7 +110,6 @@ export default function TeacherDashboard() {
     e.stopPropagation();
 
     try {
-      // 1. Fetch all students who took this specific exam
       const { data: students, error: studentErr } = await supabase
         .from("students")
         .select("*")
@@ -95,7 +122,6 @@ export default function TeacherDashboard() {
         return;
       }
 
-      // 2. Fetch the total number of questions to calculate percentages
       const { data: examData } = await supabase
         .from("exams")
         .select("id")
@@ -111,7 +137,6 @@ export default function TeacherDashboard() {
         if (count) totalQuestions = count;
       }
 
-      // 3. Format the data for Excel
       const excelData = students.map((s) => {
         const correct = s.score || 0;
         const mistakes = totalQuestions - correct;
@@ -127,7 +152,6 @@ export default function TeacherDashboard() {
         };
       });
 
-      // 4. Generate and download the file
       const worksheet = XLSX.utils.json_to_sheet(excelData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Grades");

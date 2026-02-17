@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Navbar from "./components/Navbar"; // Adjust path if needed
 import Footer from "./components/Footer";
+import { Salad } from "lucide-react";
 
 export default function Home() {
   return (

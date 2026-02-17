@@ -189,13 +189,13 @@ export default function TeacherResultsPage() {
           {/* Back Button */}
           <button
             onClick={() => setViewingAnswers(false)}
-            className="mb-8 bg-white border-4 border-black px-6 py-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+            className=" text-red-500 mb-8 bg-white border-4 border-black px-6 py-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
           >
             ← Back to Results
           </button>
 
           {/* Student Header */}
-          <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 mb-8">
+          <div className="text-black bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 mb-8">
             <h1 className="text-5xl font-black uppercase tracking-tighter mb-4">
               {selectedStudent.name}
             </h1>
@@ -215,7 +215,7 @@ export default function TeacherResultsPage() {
 
           {/* Individual Answers */}
           <div className="space-y-6">
-            <h2 className="text-3xl font-black uppercase bg-white border-4 border-black inline-block px-4 py-2 shadow-[4px_4px_0px_0px_#000]">
+            <h2 className="text-black text-3xl font-black uppercase bg-white border-4 border-black inline-block px-4 py-2 shadow-[4px_4px_0px_0px_#000]">
               Question by Question
             </h2>
             {studentAnswers.length === 0 && (
@@ -226,7 +226,7 @@ export default function TeacherResultsPage() {
             {studentAnswers.map((answer, idx) => (
               <div
                 key={answer.id}
-                className={`border-[6px] border-black p-6 shadow-[8px_8px_0px_0px_#000] ${answer.is_correct ? "bg-[#00E57A]" : "bg-[#FF6B9E]"}`}
+                className={` text-gray-900 border-[6px] border-black p-6 shadow-[8px_8px_0px_0px_#000] ${answer.is_correct ? "bg-[#00E57A]" : "bg-[#FF6B9E]"}`}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -296,10 +296,10 @@ export default function TeacherResultsPage() {
               <div className="bg-black text-white inline-block px-4 py-1 font-black uppercase text-sm mb-4 border-2 border-black shadow-[2px_2px_0px_0px_#25c0f4]">
                 Results Dashboard
               </div>
-              <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-none">
+              <h1 className=" text-[#25c0f4] text-5xl md:text-7xl font-black uppercase tracking-tighter leading-none">
                 {exam?.title || "Exam Results"}
               </h1>
-              <p className="text-2xl font-bold mt-2">
+              <p className=" text-black text-2xl font-bold mt-2">
                 CODE:{" "}
                 <span className="bg-[#FFE600] px-2 border-2 border-black">
                   {examCode}
@@ -412,10 +412,10 @@ export default function TeacherResultsPage() {
                       key={student.id}
                       className="border-b-4 border-black last:border-0 hover:bg-gray-50 transition-colors"
                     >
-                      <td className="p-4 font-black uppercase tracking-tight text-lg">
+                      <td className="text-black p-4 font-black uppercase tracking-tight text-lg">
                         {student.name}
                       </td>
-                      <td className="p-4">
+                      <td className="text-black p-4">
                         {isFinished ? (
                           <span
                             className={`${scoreColor} px-3 py-1 border-4 border-black font-black text-xl shadow-[2px_2px_0px_0px_#000] inline-block`}
@@ -428,7 +428,7 @@ export default function TeacherResultsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="p-4 font-black text-xl tracking-tighter">
+                      <td className="text-black p-4 font-black text-xl tracking-tighter">
                         {isFinished
                           ? `${correctCount} / ${totalQuestions}`
                           : "—"}

@@ -125,9 +125,9 @@ export default function ActiveExamPage() {
           backgroundSize: "32px 32px",
         }}
       >
-        <div className="bg-white border-[8px] border-black shadow-[16px_16px_0px_0px_#000] p-12 md:p-24 max-w-3xl w-full animate-in zoom-in duration-500">
+        <div className="bg-white border-8px border-black shadow-[16px_16px_0px_0px_#000] p-12 md:p-24 max-w-3xl w-full animate-in zoom-in duration-500">
           <div className="size-32 bg-black text-[#00E57A] flex items-center justify-center mx-auto mb-8 border-4 border-black shadow-[8px_8px_0px_0px_#FFE600] rotate-3">
-            <CheckCircle2 className="w-20 h-20 stroke-[3]" />
+            <CheckCircle2 className="w-20 h-20 stroke-3" />
           </div>
 
           <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter text-black mb-6 leading-none">
@@ -219,7 +219,7 @@ export default function ActiveExamPage() {
               ? "Submit Exam"
               : "Next Question"}
           </span>
-          <ArrowRight className="w-16 h-16 stroke-[4] transition-transform group-hover:translate-x-4" />
+          <ArrowRight className="w-16 h-16 stroke-4 transition-transform group-hover:translate-x-4" />
         </button>
       </main>
     </div>

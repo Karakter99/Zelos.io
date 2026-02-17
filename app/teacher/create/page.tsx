@@ -1,452 +1,328 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
-import { supabase } from "../../utils/Supabase/client";
-import Navbar from "../../components/Navbar";
-import {
-  UploadCloud,
-  Check,
-  Send,
-  HelpCircle,
-  Eye,
-  History,
-  Download,
-  Clock, // 🟢 Added Clock icon for the timer
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { supabase } from "@/app/utils/Supabase/client";
+import Navbar from "@/app/components/Navbar";
+import { Lock, Unlock, Users, ShieldAlert, CheckCircle2 } from "lucide-react";
 
-interface Question {
-  text: string;
-  options: (string | number | undefined)[];
-  answer: string | number;
+interface Student {
+  id: string;
+  name: string;
+  status: string;
+  score: number | null;
+  current_question_index: number | null;
+  detention_end_time: string | null;
 }
 
-interface ExcelQuestionRow {
-  text?: string;
-  option1?: string | number;
-  option2?: string | number;
-  option3?: string | number;
-  option4?: string | number;
-  answer?: string | number;
-}
-
-export default function CreateExamPage() {
+export default function TeacherMonitorPage() {
+  const params = useParams();
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-  const [teacherEmail, setTeacherEmail] = useState<string | null>(null);
+  const examCode = params.code as string;
 
-  const [examTitle, setExamTitle] = useState("");
-  const [timeLimit, setTimeLimit] = useState<number | "">(60); // 🟢 New state for Time Limit
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [dragActive, setDragActive] = useState(false);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [examTitle, setExamTitle] = useState("Loading Exam...");
+  const [totalQuestions, setTotalQuestions] = useState(1);
+  const [loading, setLoading] = useState(true);
 
-  // Check authentication on mount
+  // 1. Fetch Initial Data
   useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/teacher/login");
-        return;
-      }
-
-      setTeacherId(user.id);
-      setTeacherEmail(user.email || null);
-    } catch (error) {
-      console.error("Auth check error:", error);
-      router.push("/teacher/login");
-    } finally {
-      setCheckingAuth(false);
-    }
-  };
-
-  // Download template function
-  const downloadTemplate = () => {
-    const templateData: ExcelQuestionRow[] = [
-      {
-        text: "What is 2 + 2?",
-        option1: "3",
-        option2: "4",
-        option3: "5",
-        option4: "6",
-        answer: "4",
-      },
-      {
-        text: "What is the capital of France?",
-        option1: "Berlin",
-        option2: "London",
-        option3: "Paris",
-        option4: "Rome",
-        answer: "Paris",
-      },
-    ];
-
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Questions");
-
-    XLSX.writeFile(workbook, "exam_template.xlsx");
-  };
-
-  const handleFileUpload = (
-    e: React.ChangeEvent<HTMLInputElement> | React.DragEvent,
-  ) => {
-    const file =
-      "dataTransfer" in e
-        ? e.dataTransfer?.files?.[0]
-        : (e.target as HTMLInputElement)?.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
+    const fetchExamData = async () => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
+        // Get Exam Title and ID
+        const { data: examData } = await supabase
+          .from("exams")
+          .select("id, title")
+          .ilike("code", examCode)
+          .single();
 
-        const formattedQuestions = (data as ExcelQuestionRow[])
-          .map((q) => ({
-            text: q.text ?? "",
-            options: [q.option1, q.option2, q.option3, q.option4].filter(
-              Boolean,
-            ),
-            answer: q.answer ?? "",
-          }))
-          .filter((q) => q.text !== "");
+        if (examData) {
+          setExamTitle(examData.title || "Untitled Exam");
 
-        setQuestions(formattedQuestions);
+          // Get True Question Count
+          const { count } = await supabase
+            .from("questions")
+            .select("*", { count: "exact", head: true })
+            .eq("exam_id", examData.id);
+
+          if (count) setTotalQuestions(count);
+        }
+
+        // Get Initial Students
+        const { data: studentData } = await supabase
+          .from("students")
+          .select("*")
+          .ilike("exam_code", examCode)
+          .order("created_at", { ascending: false });
+
+        if (studentData) setStudents(studentData);
       } catch (err: unknown) {
-        console.error("Parse Error:", err);
-        alert(
-          "Failed to read the file. Please try downloading the template first.",
-        );
+        console.error("Fetch Error:", err);
+      } finally {
+        setLoading(false);
       }
     };
-    reader.readAsBinaryString(file);
-  };
 
-  const handleSaveExam = async () => {
-    if (!examTitle || questions.length === 0) {
-      alert("Please enter a title and upload some questions!");
-      return;
-    }
+    fetchExamData();
+  }, [examCode]);
 
-    // 🟢 Validation for time limit
-    if (timeLimit === "" || timeLimit < 1) {
-      alert("Time limit must be at least 1 minute.");
-      return;
-    }
-    if (!teacherId) {
-      alert("You must be logged in to create an exam!");
-      router.push("/teacher/login");
-      return;
-    }
+  // 2. 🟢 REAL-TIME RADAR: Listen for live student updates 🟢
+  useEffect(() => {
+    const channel = supabase
+      .channel("teacher-monitor")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "students",
+          filter: `exam_code=ilike.${examCode}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            setStudents((prev) => [payload.new as Student, ...prev]);
+          } else if (payload.eventType === "UPDATE") {
+            setStudents((prev) =>
+              prev.map((s) =>
+                s.id === payload.new.id ? (payload.new as Student) : s,
+              ),
+            );
+          }
+        },
+      )
+      .subscribe();
 
-    setLoading(true);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [examCode]);
+
+  // 3. 🟢 THE BLOCK BUTTON (Sends to Detention) 🟢
+  const handleBlockStudent = async (studentId: string) => {
+    // Manually add a 2-minute penalty from right NOW
+    const penaltyTime = new Date(Date.now() + 120000).toISOString();
 
     try {
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      console.log("1. Starting Exam Upload...");
-
-      // Step 1: Create the Exam linked to this teacher (WITH TIME LIMIT)
-      const { data: exam, error: examError } = await supabase
-        .from("exams")
-        .insert([
-          {
-            title: examTitle,
-            code: code,
-            is_active: true,
-            teacher_id: teacherId,
-            created_by_email: teacherEmail,
-            time_limit: timeLimit, // 🟢 Save time limit to database
-          },
-        ])
-        .select("id")
-        .single();
-
-      if (examError) {
-        throw new Error("Exam Upload Failed: " + examError.message);
-      }
-
-      if (!exam || !exam.id) {
-        throw new Error("Exam created, but Supabase did not return the ID.");
-      }
-
-      console.log("2. Exam Created! ID:", exam.id);
-
-      // Step 2: Prepare the Questions Payload
-      const questionPayload = questions.map((q) => ({
-        exam_id: exam.id,
-        text: q.text,
-        options: q.options,
-        answer: String(q.answer),
-        type: "multiple_choice",
-      }));
-
-      console.log(
-        "3. Payload prepared. Uploading questions...",
-        questionPayload,
-      );
-
-      // Step 3: Insert Questions
-      const { error: qError } = await supabase
-        .from("questions")
-        .insert(questionPayload);
-
-      if (qError) {
-        throw new Error("Questions Upload Failed: " + qError.message);
-      }
-
-      alert(`✅ Exam Created! Code: ${code}`);
-      router.push("/teacher");
+      await supabase
+        .from("students")
+        .update({
+          status: "detention",
+          detention_end_time: penaltyTime,
+        })
+        .eq("id", studentId);
     } catch (err: unknown) {
-      console.error("Database Error:", err);
-      const errorMessage =
-        err instanceof Error ? err.message : "Unknown error occurred";
-      alert("❌ " + errorMessage);
-    } finally {
-      setLoading(false);
+      console.error("Error blocking student:", err);
     }
   };
 
-  if (checkingAuth) {
+  // 4. 🟢 THE FORGIVE BUTTON (Removes Detention) 🟢
+  const handleForgiveStudent = async (studentId: string) => {
+    try {
+      await supabase
+        .from("students")
+        .update({
+          status: "active",
+          detention_end_time: null,
+        })
+        .eq("id", studentId);
+    } catch (err: unknown) {
+      console.error("Error forgiving student:", err);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-[#FFD700] flex items-center justify-center font-black text-6xl">
-        Checking Authentication...
+      <div className="min-h-screen bg-[#FFE600] flex items-center justify-center font-black text-5xl border-[8px] border-black">
+        Activating Radar...
       </div>
     );
   }
 
+  const activeCount = students.filter((s) => s.status === "active").length;
+  const detentionCount = students.filter(
+    (s) => s.status === "detention",
+  ).length;
+  const finishedCount = students.filter(
+    (s) => s.status === "finished" || s.status === "failed",
+  ).length;
+
   return (
-    <div className="min-h-screen bg-[#f5f8f8] flex flex-col font-sans selection:bg-[#25c0f4] selection:text-black">
+    <div
+      className="min-h-screen bg-[#f5f8f8] flex flex-col font-sans selection:bg-[#FFE600] selection:text-black"
+      style={{
+        backgroundImage: "radial-gradient(#000 1px, transparent 1px)",
+        backgroundSize: "32px 32px",
+      }}
+    >
       <Navbar />
 
-      {/* Main Workspace */}
-      <main
-        className="flex-1 p-6 md:p-10 bg-[#FFD700]"
-        style={{
-          backgroundImage: "radial-gradient(#000 1px, transparent 1px)",
-          backgroundSize: "30px 30px",
-        }}
-      >
-        <div className="max-w-6xl mx-auto space-y-10">
-          {/* Page Header & Settings */}
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
-            <div>
-              <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none text-black">
-                Upload
-                <br />
-                Questions
-              </h1>
-              <p className="mt-4 text-xl font-bold uppercase bg-black text-white inline-block px-4 py-1 shadow-[4px_4px_0px_0px_#25c0f4]">
-                Batch create via spreadsheet
-              </p>
+      <main className="flex-grow p-6 md:p-12 max-w-[1600px] mx-auto w-full flex flex-col gap-8">
+        {/* Header Section */}
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div>
+            <div className="bg-black text-white inline-block px-4 py-1 font-black uppercase tracking-widest text-sm mb-4 flex items-center gap-2 border-2 border-black">
+              <ShieldAlert className="w-4 h-4" /> Live Monitor
             </div>
-
-            {/* 🟢 Title and Time Limit Inputs */}
-            <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-              {/* Exam Title Input */}
-              <div className="flex flex-col gap-2 flex-grow">
-                <label className="text-sm font-black uppercase tracking-widest text-black">
-                  Exam Title
-                </label>
-                <input
-                  type="text"
-                  value={examTitle}
-                  onChange={(e) => setExamTitle(e.target.value)}
-                  placeholder="E.G. PHYSICS MIDTERM"
-                  className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
-                />
-              </div>
-
-              {/* Time Limit Input */}
-              <div className="flex flex-col gap-2 sm:w-48 shrink-0">
-                <label className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> Time (Mins)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={timeLimit}
-                  onChange={(e) =>
-                    setTimeLimit(
-                      e.target.value === "" ? "" : Number(e.target.value),
-                    )
-                  }
-                  className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black text-center shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
-                />
-              </div>
-            </div>
+            <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-none">
+              {examTitle}
+            </h1>
+            <p className="text-2xl font-bold mt-2">
+              EXAM CODE:{" "}
+              <span className="bg-[#FFE600] px-3 border-2 border-black">
+                {examCode}
+              </span>
+            </p>
           </div>
 
-          {/* Drop Zone */}
-          <div
-            className="relative group"
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragLeave={() => setDragActive(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragActive(false);
-              handleFileUpload(e);
-            }}
+          <button
+            onClick={() => router.push(`/teacher/results/${examCode}`)}
+            className="bg-[#5A87FF] text-white border-4 border-black px-8 py-4 font-black text-xl uppercase shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
           >
-            <div className="absolute inset-0 bg-black translate-x-3 translate-y-3"></div>
-            <div
-              className={`relative bg-white border-8 border-black p-12 md:p-20 flex flex-col items-center text-center cursor-pointer border-dashed transition-colors ${dragActive ? "bg-[#25c0f4]" : ""}`}
-            >
-              <input
-                type="file"
-                accept=".xlsx, .xls"
-                className="absolute inset-0 opacity-0 cursor-pointer"
-                onChange={handleFileUpload}
-              />
+            End & View Results
+          </button>
+        </div>
 
-              <div className="size-32 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] flex items-center justify-center mb-8 rotate-3 group-hover:rotate-0 transition-transform">
-                {questions.length > 0 ? (
-                  <Check className="w-16 h-16 text-black stroke-3" />
-                ) : (
-                  <UploadCloud className="w-16 h-16 text-black stroke-3" />
-                )}
+        {/* Live Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white border-4 border-black p-6 flex items-center gap-4 shadow-[6px_6px_0px_0px_#000]">
+            <div className="bg-[#25c0f4] p-4 border-2 border-black">
+              <Users className="w-8 h-8 text-black" />
+            </div>
+            <div>
+              <div className="text-4xl font-black">{activeCount}</div>
+              <div className="font-bold uppercase text-sm text-black/60">
+                Active Testing
               </div>
-
-              <h2 className="text-4xl font-black uppercase text-black mb-4">
-                {questions.length > 0
-                  ? `${questions.length} QUESTIONS LOADED`
-                  : "Drag & Drop .XLSX"}
-              </h2>
-              <p className="text-xl font-bold text-black/60 uppercase max-w-md">
-                Or click to browse your computer for a question spreadsheet
-              </p>
             </div>
           </div>
-
-          {/* Preview Section */}
-          {questions.length > 0 && (
-            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center justify-between">
-                <h2 className="text-4xl font-black uppercase tracking-tighter text-black flex items-center gap-3">
-                  <Eye className="w-10 h-10" /> Preview
-                </h2>
-                <button
-                  onClick={() => setQuestions([])}
-                  className="bg-black text-[#FFD700] px-4 py-1 font-black uppercase hover:bg-red-500 transition-colors"
-                >
-                  Clear All
-                </button>
+          <div className="bg-white border-4 border-black p-6 flex items-center gap-4 shadow-[6px_6px_0px_0px_#000]">
+            <div className="bg-[#FF6B9E] p-4 border-2 border-black animate-pulse">
+              <Lock className="w-8 h-8 text-black" />
+            </div>
+            <div>
+              <div className="text-4xl font-black">{detentionCount}</div>
+              <div className="font-bold uppercase text-sm text-black/60">
+                In Detention
               </div>
-
-              <div className="overflow-x-auto border-4 border-black shadow-[8px_8px_0px_0px_#000] bg-white">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-black text-white uppercase text-sm font-black">
-                      <th className="p-4 border-r-4 border-white/20">
-                        Question Text
-                      </th>
-                      <th className="p-4 border-r-4 border-white/20">
-                        Options
-                      </th>
-                      <th className="p-4 border-r-4 border-white/20">
-                        Correct
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-black font-bold uppercase">
-                    {questions.slice(0, 10).map((q, i) => (
-                      <tr
-                        key={i}
-                        className="border-b-4 border-black last:border-0"
-                      >
-                        <td className="p-4 border-r-4 border-black lowercase first-letter:uppercase">
-                          {q.text}
-                        </td>
-                        <td className="p-4 border-r-4 border-black text-xs text-black/60 italic">
-                          {q.options.join(", ")}
-                        </td>
-                        <td className="p-4 border-r-4 border-black">
-                          <span className="bg-[#FFD700] px-3 py-1 border-2 border-black inline-block font-black">
-                            {q.answer}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            </div>
+          </div>
+          <div className="bg-white border-4 border-black p-6 flex items-center gap-4 shadow-[6px_6px_0px_0px_#000]">
+            <div className="bg-[#00E57A] p-4 border-2 border-black">
+              <CheckCircle2 className="w-8 h-8 text-black" />
+            </div>
+            <div>
+              <div className="text-4xl font-black">{finishedCount}</div>
+              <div className="font-bold uppercase text-sm text-black/60">
+                Completed
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Student Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {students.length === 0 && (
+            <div className="col-span-full bg-white border-4 border-black p-12 text-center shadow-[8px_8px_0px_0px_#000]">
+              <h2 className="text-3xl font-black uppercase">
+                Waiting for students to join...
+              </h2>
+              <p className="text-xl font-bold mt-2">
+                Share the exam code with your class.
+              </p>
             </div>
           )}
 
-          {/* Help Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-32">
-            <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_#000]">
-              <h3 className="text-2xl font-black uppercase mb-4 flex items-center gap-2 text-black">
-                <History className="w-6 h-6" /> Recently Uploaded
-              </h3>
-              <p className="text-sm text-black/60 font-bold">
-                Your recent uploads will appear here
-              </p>
-            </div>
+          {students.map((student) => {
+            const isDetention = student.status === "detention";
+            const isFinished =
+              student.status === "finished" || student.status === "failed";
 
-            <div className="border-4 border-black bg-[#25c0f4] p-6 shadow-[6px_6px_0px_0px_#000] flex flex-col justify-center items-center text-center">
-              <HelpCircle className="text-black w-12 h-12 mb-2" />
-              <h3 className="text-2xl font-black uppercase text-black mb-2">
-                Need Help?
-              </h3>
-              <p className="font-bold uppercase text-black/80 text-sm">
-                Spreadsheet must have headers: text, option1, option2, option3,
-                option4, answer.
-              </p>
-              <button
-                onClick={downloadTemplate}
-                className="mt-4 flex items-center gap-2 underline decoration-4 font-black uppercase text-black text-lg hover:text-white transition-colors"
+            // Calculate live progress percentage
+            const answeredCount = student.current_question_index || 0;
+            const progressPercent = Math.min(
+              (answeredCount / totalQuestions) * 100,
+              100,
+            );
+
+            // Dynamic Styling based on status
+            let cardColor = "bg-white";
+            let statusBadge = "bg-[#00E57A] text-black";
+            let statusText = "Active";
+
+            if (isDetention) {
+              cardColor = "bg-[#FF6B9E]";
+              statusBadge = "bg-black text-white animate-pulse";
+              statusText = "LOCKED OUT";
+            } else if (isFinished) {
+              cardColor = "bg-gray-100 opacity-60";
+              statusBadge = "bg-gray-300 text-gray-600";
+              statusText = "FINISHED";
+            }
+
+            return (
+              <div
+                key={student.id}
+                className={`${cardColor} border-[4px] border-black p-6 shadow-[6px_6px_0px_0px_#000] flex flex-col gap-4 transition-colors duration-300`}
               >
-                <Download className="w-5 h-5" />
-                Download Template
-              </button>
-            </div>
-          </div>
+                {/* Header */}
+                <div className="flex justify-between items-start">
+                  <h3 className="text-2xl font-black uppercase tracking-tight break-words max-w-[70%]">
+                    {student.name}
+                  </h3>
+                  <span
+                    className={`${statusBadge} px-3 py-1 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_#000]`}
+                  >
+                    {statusText}
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs font-black uppercase">
+                    <span>Progress</span>
+                    <span>
+                      {answeredCount} / {totalQuestions}
+                    </span>
+                  </div>
+                  <div className="w-full h-4 bg-white border-2 border-black overflow-hidden relative">
+                    <div
+                      className="absolute top-0 left-0 h-full bg-[#25c0f4] transition-all duration-500"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 🟢 TEACHER ACTIONS 🟢 */}
+                <div className="mt-auto pt-4 border-t-4 border-black border-dashed">
+                  {!isFinished && !isDetention && (
+                    <button
+                      onClick={() => handleBlockStudent(student.id)}
+                      className="w-full bg-[#FF6B9E] text-black border-4 border-black p-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-2"
+                    >
+                      <Lock className="w-5 h-5 stroke-[3]" /> Force Block
+                    </button>
+                  )}
+
+                  {!isFinished && isDetention && (
+                    <button
+                      onClick={() => handleForgiveStudent(student.id)}
+                      className="w-full bg-[#00E57A] text-black border-4 border-black p-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-2"
+                    >
+                      <Unlock className="w-5 h-5 stroke-[3]" /> Forgive Student
+                    </button>
+                  )}
+
+                  {isFinished && (
+                    <div className="w-full bg-black text-white p-3 font-black uppercase text-center border-4 border-black">
+                      Exam Submitted
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </main>
-
-      {/* Floating Action Bar */}
-      <footer className="sticky bottom-0 bg-white border-t-8 border-black p-6 flex items-center justify-between z-50">
-        <div className="hidden md:flex items-center gap-2">
-          <HelpCircle className="w-5 h-5 text-black" />
-          <span className="font-black uppercase text-xs">
-            Review your questions before publishing to the class database.
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <button
-            onClick={() => router.push("/teacher")}
-            className=" text-red-400 flex-1 md:flex-none px-10 py-4 bg-white border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSaveExam}
-            disabled={loading}
-            className="flex-1 md:flex-none px-10 py-4 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase flex items-center justify-center gap-3 disabled:opacity-50"
-          >
-            <Send className="w-6 h-6 stroke-[3]" />
-            {loading ? "SAVING..." : "Save & Publish"}
-          </button>
-        </div>
-      </footer>
     </div>
   );
 }

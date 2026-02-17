@@ -159,6 +159,49 @@ export default function LiveCheatMonitor() {
     }
   };
 
+  // --- 🟢 NEW: FORCE BLOCK FUNCTION 🟢 ---
+  const handleForceBlock = async (studentId: string) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to send this student to detention?",
+      )
+    )
+      return;
+
+    // Apply a 2-minute penalty from right NOW
+    const penaltyTime = new Date(Date.now() + 120000).toISOString();
+
+    try {
+      console.log("Force blocking student ID:", studentId);
+
+      const { data, error } = await supabase
+        .from("students")
+        .update({
+          status: "detention",
+          detention_end_time: penaltyTime,
+        })
+        .eq("id", studentId)
+        .select();
+
+      if (error) {
+        console.error("❌ UPDATE ERROR:", error);
+        return alert("Database Error: " + error.message);
+      }
+
+      // Optimistically update the UI instantly so the teacher doesn't have to wait for the 3-second interval
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === studentId
+            ? { ...s, status: "detention", detention_end_time: penaltyTime }
+            : s,
+        ),
+      );
+    } catch (err: unknown) {
+      console.error("Failed to force block:", err);
+      alert("Error applying block.");
+    }
+  };
+
   const activeCount = students.filter(
     (s) => s.status === "active" && !s.detention_end_time,
   ).length;
@@ -294,6 +337,7 @@ export default function LiveCheatMonitor() {
             const isDetention =
               student.status === "detained" ||
               student.status === "locked" ||
+              student.status === "detention" ||
               student.detention_end_time !== null;
 
             const progressPercent = Math.min(
@@ -350,7 +394,20 @@ export default function LiveCheatMonitor() {
                   </div>
                 </div>
 
-                {/* 🟢 SUSPENSION WARNING AND UNLOCK BUTTON (ONLY SHOWS IF CAUGHT) 🟢 */}
+                {/* 🟢 NEW: FORCE BLOCK BUTTON (SHOWS IF ACTIVE) 🟢 */}
+                {!isFinished && !isDetention && (
+                  <div className="mt-6">
+                    <button
+                      onClick={() => handleForceBlock(student.id)}
+                      className="w-full bg-[#FF6B9E] text-black border-4 border-black p-3 font-black uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                    >
+                      <Lock className="w-5 h-5 stroke-[3] group-hover:scale-110 transition-transform" />
+                      Force Block
+                    </button>
+                  </div>
+                )}
+
+                {/* 🟢 SUSPENSION WARNING AND UNLOCK BUTTON (SHOWS IF CAUGHT) 🟢 */}
                 {isDetention && (
                   <div className="mt-6 flex flex-col gap-3">
                     <div className="bg-black text-white p-3 text-center font-black uppercase tracking-widest text-sm border-2 border-dashed border-[#FF6B9E] animate-pulse">

@@ -95,7 +95,7 @@ export default function Navbar() {
               onClick={handleLogout}
               className="flex items-center gap-2 bg-white text-black px-4 py-2 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all font-black uppercase text-sm"
             >
-              <LogOut className="w-5 h-5 stroke-[3]" />
+              <LogOut className="w-5 h-5 stroke-3" />
               <span className="hidden sm:inline">Logout</span>
             </button>
           </>

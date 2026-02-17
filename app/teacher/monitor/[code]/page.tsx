@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/app/utils/Supabase/client";
 import Navbar from "@/app/components/Navbar";
 import {
@@ -12,14 +12,16 @@ import {
   Users,
   Download,
   Unlock,
+  PlayCircle,
+  Radio,
 } from "lucide-react";
 import Link from "next/link";
-
 import * as XLSX from "xlsx";
 
 interface Exam {
   id: string;
   title?: string;
+  status?: string;
 }
 
 interface Student {
@@ -33,13 +35,14 @@ interface Student {
 
 export default function LiveCheatMonitor() {
   const params = useParams();
-
+  const router = useRouter();
   const rawCode = params.code as string;
   const examCode = rawCode
     ? decodeURIComponent(rawCode).trim().toUpperCase()
     : "";
 
   const [exam, setExam] = useState<Exam | null>(null);
+  const [examStatus, setExamStatus] = useState<string>("waiting");
   const [students, setStudents] = useState<Student[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -57,6 +60,8 @@ export default function LiveCheatMonitor() {
 
         if (examData) {
           setExam(examData);
+          setExamStatus(examData.status || "waiting");
+
           const { count } = await supabase
             .from("questions")
             .select("*", { count: "exact", head: true })
@@ -88,7 +93,29 @@ export default function LiveCheatMonitor() {
     return () => clearInterval(interval);
   }, [examCode]);
 
-  // --- 🟢 EXCEL EXPORT FUNCTION ---
+  // --- 🟢 MASTER SWITCH FUNCTION 🟢 ---
+  const handleStartExam = async () => {
+    if (
+      !window.confirm(
+        "Are you sure? This will instantly start the timer for all students!",
+      )
+    )
+      return;
+
+    try {
+      const now = new Date().toISOString();
+      await supabase
+        .from("exams")
+        .update({ status: "live", started_at: now })
+        .eq("id", exam?.id);
+
+      setExamStatus("live");
+    } catch (err: unknown) {
+      console.error("Error starting exam:", err);
+      alert("Failed to start exam.");
+    }
+  };
+
   const exportToExcel = () => {
     if (students.length === 0) return alert("No students to export yet!");
 
@@ -118,34 +145,14 @@ export default function LiveCheatMonitor() {
     XLSX.writeFile(workbook, `${safeTitle}_Class_Results.xlsx`);
   };
 
-  // --- 🟢 LOUD REMOVE SUSPENSION FUNCTION 🟢 ---
   const handleRemoveSuspension = async (studentId: string) => {
     if (!window.confirm("Are you sure you want to unlock this student?"))
       return;
-
     try {
-      console.log("Unlocking student ID:", studentId);
-
-      const { data, error } = await supabase
+      await supabase
         .from("students")
-        .update({
-          status: "active",
-          detention_end_time: null,
-        })
-        .eq("id", studentId)
-        .select();
-
-      if (error) {
-        console.error("❌ UPDATE ERROR:", error);
-        return alert("Database Error: " + error.message);
-      }
-
-      if (!data || data.length === 0) {
-        return alert(
-          "❌ SILENT FAILURE: The database blocked the update. RLS issue!",
-        );
-      }
-
+        .update({ status: "active", detention_end_time: null })
+        .eq("id", studentId);
       setStudents((prev) =>
         prev.map((s) =>
           s.id === studentId
@@ -154,12 +161,10 @@ export default function LiveCheatMonitor() {
         ),
       );
     } catch (err: unknown) {
-      console.error("Failed to remove suspension:", err);
-      alert("Error removing suspension.");
+      console.error("Failed to unlock:", err);
     }
   };
 
-  // --- 🟢 NEW: FORCE BLOCK FUNCTION 🟢 ---
   const handleForceBlock = async (studentId: string) => {
     if (
       !window.confirm(
@@ -167,28 +172,12 @@ export default function LiveCheatMonitor() {
       )
     )
       return;
-
-    // Apply a 2-minute penalty from right NOW
     const penaltyTime = new Date(Date.now() + 120000).toISOString();
-
     try {
-      console.log("Force blocking student ID:", studentId);
-
-      const { data, error } = await supabase
+      await supabase
         .from("students")
-        .update({
-          status: "detention",
-          detention_end_time: penaltyTime,
-        })
-        .eq("id", studentId)
-        .select();
-
-      if (error) {
-        console.error("❌ UPDATE ERROR:", error);
-        return alert("Database Error: " + error.message);
-      }
-
-      // Optimistically update the UI instantly so the teacher doesn't have to wait for the 3-second interval
+        .update({ status: "detention", detention_end_time: penaltyTime })
+        .eq("id", studentId);
       setStudents((prev) =>
         prev.map((s) =>
           s.id === studentId
@@ -198,7 +187,6 @@ export default function LiveCheatMonitor() {
       );
     } catch (err: unknown) {
       console.error("Failed to force block:", err);
-      alert("Error applying block.");
     }
   };
 
@@ -244,23 +232,53 @@ export default function LiveCheatMonitor() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-4">
-            {/* Total Students Box */}
-            <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-4">
-              <Users className="w-10 h-10 text-white stroke-[3]" />
+          <div className="flex flex-wrap items-center gap-4">
+            {/* 🟢 THE MASTER SWITCH UI (SMALLER ICON) 🟢 */}
+            {examStatus === "waiting" || !examStatus ? (
+              <button
+                onClick={handleStartExam}
+                className="bg-[#00E57A] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:bg-black active:text-white transition-all group animate-pulse"
+              >
+                <PlayCircle className="w-7 h-7 stroke-[3]" />
+                <div className="text-left">
+                  <div className="text-2xl font-black uppercase leading-none tracking-tighter">
+                    Start Exam
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-widest opacity-80">
+                    Waiting Room
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <div className="bg-black text-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#00E57A] p-4 flex items-center gap-3">
+                <Radio className="w-7 h-7 stroke-[3] animate-pulse" />
+                <div className="text-left">
+                  <div className="text-2xl font-black uppercase leading-none tracking-tighter">
+                    Live
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-widest opacity-80">
+                    Test Active
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Total Students Box (SMALLER ICON) */}
+            <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
+              <Users className="w-7 h-7 text-white stroke-[3]" />
               <div>
                 <div className="text-3xl font-black text-white leading-none">
                   {students.length}
                 </div>
-                <div className="text-xs font-black uppercase tracking-widest">
+                <div className="text-xs font-black uppercase tracking-widest text-white/80">
                   Total
                 </div>
               </div>
             </div>
 
-            {/* Finished Box */}
-            <div className="bg-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-4">
-              <CheckCircle2 className="w-10 h-10 text-black stroke-[3]" />
+            {/* Finished Box (SMALLER ICON) */}
+            <div className="bg-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
+              <CheckCircle2 className="w-7 h-7 text-black stroke-[3]" />
               <div>
                 <div className="text-3xl font-black text-black leading-none">
                   {finishedCount}
@@ -271,9 +289,9 @@ export default function LiveCheatMonitor() {
               </div>
             </div>
 
-            {/* Detention Box */}
-            <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-4 animate-pulse">
-              <AlertTriangle className="w-10 h-10 text-black stroke-[3]" />
+            {/* Detention Box (SMALLER ICON) */}
+            <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 animate-pulse">
+              <AlertTriangle className="w-7 h-7 text-black stroke-[3]" />
               <div>
                 <div className="text-3xl font-black text-black leading-none">
                   {caughtCount}
@@ -284,28 +302,28 @@ export default function LiveCheatMonitor() {
               </div>
             </div>
 
-            {/* 🟢 RESTORED: VIEW RESULTS BUTTON 🟢 */}
+            {/* Results Button */}
             <Link
               href={`/teacher/results/${examCode}`}
-              className="bg-[#FFE600] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-4 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:bg-black active:text-[#FFE600] transition-all group cursor-pointer"
+              className="bg-[#FFE600] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer"
             >
               <div className="text-left">
                 <div className="text-2xl font-black uppercase leading-none tracking-tighter">
                   Results
                 </div>
-                <div className="text-xs font-black uppercase tracking-widest text-black/80">
+                <div className="text-xs font-black uppercase tracking-widest">
                   View Live →
                 </div>
               </div>
             </Link>
 
-            {/* PURPLE EXPORT BUTTON */}
+            {/* Export Button (SMALLER ICON) */}
             <button
               onClick={exportToExcel}
-              className="bg-[#a855f7] text-white border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-4 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:bg-black transition-all group cursor-pointer"
+              className="bg-[#a855f7] text-white border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer group"
             >
-              <Download className="w-10 h-10 stroke-[3] group-hover:-translate-y-1 transition-transform" />
-              <div className="text-left">
+              <Download className="w-7 h-7 stroke-[3] group-hover:-translate-y-1 transition-transform" />
+              <div className="text-left hidden sm:block">
                 <div className="text-2xl font-black uppercase leading-none tracking-tighter">
                   Export
                 </div>
@@ -333,7 +351,6 @@ export default function LiveCheatMonitor() {
           {students.map((student) => {
             const isFinished = student.status === "finished";
 
-            // 🟢 This checks if they are currently locked out
             const isDetention =
               student.status === "detained" ||
               student.status === "locked" ||
@@ -348,17 +365,22 @@ export default function LiveCheatMonitor() {
             );
 
             let cardBg = "bg-white";
-            let statusText = "ACTIVE";
-            let statusIcon = <Activity className="w-6 h-6 animate-pulse" />;
+            let statusText = examStatus === "waiting" ? "WAITING" : "ACTIVE";
+            let statusIcon =
+              examStatus === "waiting" ? (
+                <Lock className="w-4 h-4" />
+              ) : (
+                <Activity className="w-4 h-4 animate-pulse" />
+              );
 
             if (isFinished) {
               cardBg = "bg-[#00E57A]";
               statusText = "DONE";
-              statusIcon = <CheckCircle2 className="w-6 h-6" />;
+              statusIcon = <CheckCircle2 className="w-4 h-4" />;
             } else if (isDetention) {
               cardBg = "bg-[#FF6B9E]";
               statusText = "LOCKED OUT";
-              statusIcon = <Lock className="w-6 h-6" />;
+              statusIcon = <Lock className="w-4 h-4" />;
             }
 
             return (
@@ -366,6 +388,7 @@ export default function LiveCheatMonitor() {
                 key={student.id}
                 className={`${cardBg} border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 flex flex-col relative transition-colors duration-300`}
               >
+                {/* 🟢 SMALLER STATUS ICON 🟢 */}
                 <div className="absolute -top-5 -right-5 bg-black text-white border-4 border-black shadow-[4px_4px_0px_0px_#fff] px-4 py-2 flex items-center gap-2 font-black uppercase tracking-widest text-sm z-10">
                   {statusIcon} {statusText}
                 </div>
@@ -394,30 +417,29 @@ export default function LiveCheatMonitor() {
                   </div>
                 </div>
 
-                {/* 🟢 NEW: FORCE BLOCK BUTTON (SHOWS IF ACTIVE) 🟢 */}
-                {!isFinished && !isDetention && (
+                {/* Hide teacher actions if the exam hasn't started yet! */}
+                {examStatus === "live" && !isFinished && !isDetention && (
                   <div className="mt-6">
                     <button
                       onClick={() => handleForceBlock(student.id)}
                       className="w-full bg-[#FF6B9E] text-black border-4 border-black p-3 font-black uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-2 group cursor-pointer"
                     >
-                      <Lock className="w-5 h-5 stroke-[3] group-hover:scale-110 transition-transform" />
+                      <Lock className="w-4 h-4 stroke-[3] group-hover:scale-110 transition-transform" />{" "}
                       Force Block
                     </button>
                   </div>
                 )}
 
-                {/* 🟢 SUSPENSION WARNING AND UNLOCK BUTTON (SHOWS IF CAUGHT) 🟢 */}
-                {isDetention && (
+                {examStatus === "live" && isDetention && (
                   <div className="mt-6 flex flex-col gap-3">
                     <div className="bg-black text-white p-3 text-center font-black uppercase tracking-widest text-sm border-2 border-dashed border-[#FF6B9E] animate-pulse">
-                      ⚠️ SUSPICIOUS ACTIVITY DETECTED
+                      ⚠️ SUSPICIOUS ACTIVITY
                     </div>
                     <button
                       onClick={() => handleRemoveSuspension(student.id)}
                       className="bg-[#00E57A] text-black border-4 border-black p-3 font-black uppercase tracking-widest text-sm shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-2 group cursor-pointer"
                     >
-                      <Unlock className="w-5 h-5 stroke-[3] group-hover:scale-110 transition-transform" />
+                      <Unlock className="w-4 h-4 stroke-[3] group-hover:scale-110 transition-transform" />{" "}
                       Forgive & Unlock
                     </button>
                   </div>

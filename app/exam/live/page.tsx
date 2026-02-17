@@ -3,7 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/app/utils/Supabase/client";
-import { CheckCircle2, ArrowRight, AlertTriangle, Clock } from "lucide-react";
+import {
+  CheckCircle2,
+  ArrowRight,
+  AlertTriangle,
+  Clock,
+  Hourglass,
+} from "lucide-react";
 
 interface Question {
   id: string;
@@ -36,6 +42,9 @@ export default function ActiveExamPage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [examStatus, setExamStatus] = useState<string>("waiting");
+  const [examTimeLimit, setExamTimeLimit] = useState<number | null>(null);
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState("");
@@ -55,12 +64,10 @@ export default function ActiveExamPage() {
   const [examEndTime, setExamEndTime] = useState<number | null>(null);
   const [examTimeLeft, setExamTimeLeft] = useState<number | null>(null);
 
-  // 🟢 NEW: Track which questions have been answered to prevent duplicates
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<string>>(
     new Set(),
   );
 
-  // 🟢 UPDATED: FORCE SUBMIT (Clears detention & saves as 'finished')
   const forceSubmitExam = useCallback(async () => {
     setIsTimedOut(true);
     setIsDetention(false);
@@ -80,7 +87,6 @@ export default function ActiveExamPage() {
     }
   }, [studentId, questions.length]);
 
-  // 🟢 CRITICAL FIX: Initialize exam and RESTORE current_question_index from database
   useEffect(() => {
     const startExam = async () => {
       try {
@@ -95,12 +101,9 @@ export default function ActiveExamPage() {
 
         setStudentId(storedStudentId);
 
-        // 🟢 FETCH STUDENT DATA INCLUDING current_question_index
         const { data: studentData } = await supabase
           .from("students")
-          .select(
-            "status, detention_end_time, score, current_question_index, created_at",
-          )
+          .select("status, detention_end_time, score, current_question_index")
           .eq("id", storedStudentId)
           .single();
 
@@ -108,7 +111,6 @@ export default function ActiveExamPage() {
           if (studentData.score) setScore(studentData.score);
           if (studentData.status === "finished") setIsFinished(true);
 
-          // 🟢 RESTORE PROGRESS FROM DATABASE
           if (
             studentData.current_question_index !== null &&
             studentData.current_question_index !== undefined
@@ -116,7 +118,6 @@ export default function ActiveExamPage() {
             setCurrentIndex(studentData.current_question_index);
           }
 
-          // Check for active detention
           if (
             studentData.detention_end_time &&
             studentData.status !== "finished"
@@ -137,24 +138,28 @@ export default function ActiveExamPage() {
 
         const { data: examData, error: examErr } = await supabase
           .from("exams")
-          .select("id, time_limit")
+          .select("id, time_limit, status")
           .eq("code", storedExamCode)
           .single();
 
         if (examErr || !examData) throw new Error("Could not find exam.");
 
         setExamId(examData.id);
+        const currentStatus = examData.status || "live";
+        setExamStatus(currentStatus);
+        setExamTimeLimit(examData.time_limit);
 
-        // 🟢 FIX: Calculate timer based on when student STARTED the exam, not when record was created
-        if (examData.time_limit && !studentData?.status?.includes("finished")) {
-          // Check if we already have a stored start time for this student's exam session
+        if (
+          currentStatus === "live" &&
+          examData.time_limit &&
+          !studentData?.status?.includes("finished")
+        ) {
           const storageKey = `exam-start-${storedStudentId}`;
-          let examStartTime = sessionStorage.getItem(storageKey);
+          let examStartTime = localStorage.getItem(storageKey);
 
           if (!examStartTime) {
-            // First time starting - record the start time NOW
             examStartTime = Date.now().toString();
-            sessionStorage.setItem(storageKey, examStartTime);
+            localStorage.setItem(storageKey, examStartTime);
           }
 
           const startTimeMs = parseInt(examStartTime);
@@ -164,76 +169,43 @@ export default function ActiveExamPage() {
           const remainingMs = endTime - Date.now();
           setExamTimeLeft(Math.max(0, Math.floor(remainingMs / 1000)));
 
-          // If time already expired, force submit immediately
-          if (remainingMs <= 0) {
-            forceSubmitExam();
-          }
+          if (remainingMs <= 0) forceSubmitExam();
         }
 
         const { data: questionsData, error: questionsErr } = await supabase
           .from("questions")
           .select("*")
-          .eq("exam_id", examData.id)
-          .order("created_at", { ascending: true });
+          .eq("exam_id", examData.id);
 
         if (questionsErr || !questionsData)
           throw new Error("Could not load questions.");
 
-        setQuestions(questionsData);
+        if (questionsData && questionsData.length > 0) {
+          const savedOrder = localStorage.getItem(
+            `order-${storedExamCode}-${storedName}`,
+          );
+          let finalQuestions: Question[] = [];
 
-        // 🟢 SET UP REALTIME SUBSCRIPTION TO LISTEN FOR TEACHER FORGIVENESS
-        interface RealtimePayload {
-          new: {
-            status: string;
-            detention_end_time: string | null;
-            current_question_index: number | null;
-          };
+          if (savedOrder) {
+            const orderIds = JSON.parse(savedOrder);
+            const orderedQs = orderIds
+              .map((id: string) => questionsData.find((q) => q.id === id))
+              .filter(Boolean) as Question[];
+            const newQs = questionsData.filter(
+              (q) => !orderIds.includes(q.id),
+            ) as Question[];
+            finalQuestions = [...orderedQs, ...newQs];
+          } else {
+            finalQuestions = [...questionsData].sort(
+              () => Math.random() - 0.5,
+            ) as Question[];
+            localStorage.setItem(
+              `order-${storedExamCode}-${storedName}`,
+              JSON.stringify(finalQuestions.map((q) => q.id)),
+            );
+          }
+          setQuestions(finalQuestions);
         }
-
-        const channel = supabase
-          .channel(`student-${storedStudentId}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "students",
-              filter: `id=eq.${storedStudentId}`,
-            },
-            (payload: RealtimePayload) => {
-              const newStatus = payload.new.status;
-              const newEndTime = payload.new.detention_end_time;
-              const newQuestionIndex = payload.new.current_question_index;
-
-              console.log("🔔 Realtime Update:", payload.new);
-
-              // 🟢 IF TEACHER FORGIVES (status changes to 'active')
-              if (newStatus === "active" && !newEndTime) {
-                setIsDetention(false);
-                setDetentionEndTime(null);
-
-                // 🟢 RESTORE PROGRESS - DON'T RESET TO 0!
-                if (
-                  newQuestionIndex !== null &&
-                  newQuestionIndex !== undefined
-                ) {
-                  console.log(
-                    "✅ Restoring progress to question:",
-                    newQuestionIndex,
-                  );
-                  setCurrentIndex(newQuestionIndex);
-                }
-              } else if (newStatus === "detention") {
-                setIsDetention(true);
-                setDetentionEndTime(newEndTime);
-              }
-            },
-          )
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
       } catch (err: unknown) {
         console.error("Initialization Error:", err);
         router.push("/exam");
@@ -245,9 +217,90 @@ export default function ActiveExamPage() {
     startExam();
   }, [router, forceSubmitExam]);
 
-  // Timer countdown
   useEffect(() => {
-    if (!examEndTime || isFinished || isTimedOut) return;
+    if (!examId) return;
+    const channel = supabase
+      .channel(`exam-updates-${examId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "exams",
+          filter: `id=eq.${examId}`,
+        },
+        (payload) => {
+          const updatedExam = payload.new;
+          if (updatedExam.status === "live") {
+            setExamStatus("live");
+            const timeLimitToUse = updatedExam.time_limit || examTimeLimit;
+            if (timeLimitToUse && studentId) {
+              const storageKey = `exam-start-${studentId}`;
+              let examStartTime = localStorage.getItem(storageKey);
+              if (!examStartTime) {
+                examStartTime = Date.now().toString();
+                localStorage.setItem(storageKey, examStartTime);
+              }
+              const startTimeMs = parseInt(examStartTime);
+              setExamEndTime(startTimeMs + timeLimitToUse * 60 * 1000);
+            }
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [examId, examTimeLimit, studentId]);
+
+  useEffect(() => {
+    if (!studentId) return;
+
+    interface RealtimePayload {
+      new: {
+        status: string;
+        detention_end_time: string | null;
+        current_question_index: number | null;
+      };
+    }
+
+    const channel = supabase
+      .channel(`student-${studentId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "students",
+          filter: `id=eq.${studentId}`,
+        },
+        (payload: RealtimePayload) => {
+          const newStatus = payload.new.status;
+          const newEndTime = payload.new.detention_end_time;
+          const newQuestionIndex = payload.new.current_question_index;
+
+          if (newStatus === "active" && !newEndTime) {
+            setIsDetention(false);
+            setDetentionEndTime(null);
+            if (newQuestionIndex !== null && newQuestionIndex !== undefined) {
+              setCurrentIndex(newQuestionIndex);
+            }
+          } else if (newStatus === "detention" && newEndTime) {
+            setIsDetention(true);
+            setDetentionEndTime(newEndTime);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [studentId]);
+
+  useEffect(() => {
+    if (!examEndTime || isFinished || isTimedOut || examStatus === "waiting")
+      return;
 
     const checkTime = () => {
       const remainingMs = examEndTime - Date.now();
@@ -260,20 +313,24 @@ export default function ActiveExamPage() {
       return false;
     };
 
-    const isTimeUp = checkTime();
-    if (isTimeUp) return;
+    if (checkTime()) return;
 
     const timer = setInterval(() => {
-      const up = checkTime();
-      if (up) clearInterval(timer);
+      if (checkTime()) clearInterval(timer);
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [examEndTime, isFinished, isTimedOut, forceSubmitExam]);
+  }, [examEndTime, isFinished, isTimedOut, examStatus, forceSubmitExam]);
 
-  // Cheat detection
   useEffect(() => {
-    if (!studentId || isFinished || isTimedOut || isDetention) return;
+    if (
+      !studentId ||
+      isFinished ||
+      isTimedOut ||
+      isDetention ||
+      examStatus === "waiting"
+    )
+      return;
 
     const triggerDetention = async () => {
       const penaltyEndTime = new Date(Date.now() + 120000).toISOString();
@@ -281,13 +338,12 @@ export default function ActiveExamPage() {
       setDetentionEndTime(penaltyEndTime);
 
       try {
-        // 🟢 SAVE CURRENT PROGRESS BEFORE DETENTION
         await supabase
           .from("students")
           .update({
             status: "detention",
             detention_end_time: penaltyEndTime,
-            current_question_index: currentIndex, // 🟢 PRESERVE PROGRESS
+            current_question_index: currentIndex,
           })
           .eq("id", studentId);
       } catch (err: unknown) {
@@ -309,9 +365,15 @@ export default function ActiveExamPage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [studentId, isFinished, isTimedOut, isDetention, currentIndex]);
+  }, [
+    studentId,
+    isFinished,
+    isTimedOut,
+    isDetention,
+    examStatus,
+    currentIndex,
+  ]);
 
-  // Detention countdown
   useEffect(() => {
     if (!isDetention || !detentionEndTime) return;
 
@@ -367,12 +429,9 @@ export default function ActiveExamPage() {
       const isLastQuestion = currentIndex === questions.length - 1;
       const currentQ = questions[currentIndex];
 
-      // 🟢 CHECK: If this question was already answered, just move forward
       if (answeredQuestions.has(currentQ.id)) {
-        console.log("Question already answered, skipping to next...");
         if (!isLastQuestion) {
-          const nextIndex = currentIndex + 1;
-          setCurrentIndex(nextIndex);
+          setCurrentIndex(currentIndex + 1);
           setSelectedOption("");
         } else {
           setIsFinished(true);
@@ -392,13 +451,7 @@ export default function ActiveExamPage() {
         .toUpperCase();
       const isCorrect = studentLetter === dbCorrectLetter;
 
-      let newScore = score;
-      if (isCorrect) {
-        newScore += 1;
-        setScore(newScore);
-      }
-
-      // 🟢 DOUBLE CHECK: Verify this answer doesn't already exist in database
+      // 🟢 FIX: Ask the DB if the answer exists BEFORE we give them a point! 🟢
       const { data: existingAnswer } = await supabase
         .from("student_answers")
         .select("id")
@@ -406,8 +459,15 @@ export default function ActiveExamPage() {
         .eq("question_id", currentQ.id)
         .maybeSingle();
 
-      // Only insert if no existing answer found
+      let newScore = score;
+
       if (!existingAnswer) {
+        // ONLY give points if this is a brand new, unique answer!
+        if (isCorrect) {
+          newScore += 1;
+          setScore(newScore);
+        }
+
         const { error: insertError } = await supabase
           .from("student_answers")
           .insert({
@@ -420,15 +480,10 @@ export default function ActiveExamPage() {
             is_correct: isCorrect,
           });
 
-        if (insertError) {
-          console.error("Insert error:", insertError);
-        } else {
-          // Mark this question as answered
+        if (!insertError)
           setAnsweredQuestions((prev) => new Set(prev).add(currentQ.id));
-        }
       } else {
-        console.log("Answer already exists in database, skipping insert");
-        // Still mark as answered locally
+        // It's a duplicate! Just mark it as answered locally to prevent future checks.
         setAnsweredQuestions((prev) => new Set(prev).add(currentQ.id));
       }
 
@@ -436,18 +491,13 @@ export default function ActiveExamPage() {
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
         setSelectedOption("");
-
-        // 🟢 SAVE PROGRESS TO DATABASE
+        // Saves the verified score
         await supabase
           .from("students")
-          .update({
-            current_question_index: nextIndex,
-            score: newScore,
-          })
+          .update({ current_question_index: nextIndex, score: newScore })
           .eq("id", studentId);
       } else {
         setIsFinished(true);
-
         await supabase
           .from("students")
           .update({
@@ -464,16 +514,38 @@ export default function ActiveExamPage() {
     }
   };
 
-  // LOADING SCREEN
   if (loading) {
     return (
       <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-6xl uppercase border-16px border-black">
-        Loading Questions...
+        Loading...
       </div>
     );
   }
 
-  // 1. TIME'S UP SCREEN (BLUE)
+  if (examStatus === "waiting") {
+    return (
+      <div
+        className="min-h-screen bg-[#FFE600] flex flex-col items-center justify-center p-6 text-center"
+        style={{
+          backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+          backgroundSize: "32px 32px",
+        }}
+      >
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full animate-in zoom-in duration-500">
+          <div className="size-24 bg-black text-[#FFE600] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#25c0f4] animate-spin-slow">
+            <Hourglass className="w-12 h-12 stroke-[3]" />
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-black mb-4 leading-none">
+            Waiting Room
+          </h1>
+          <p className="text-xl font-bold uppercase tracking-widest text-black/70 mb-4 border-2 border-dashed border-black p-4 bg-gray-50">
+            Wait for your teacher to open the exam. Do not refresh this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (isTimedOut) {
     return (
       <div
@@ -495,7 +567,8 @@ export default function ActiveExamPage() {
           </p>
           <button
             onClick={() => {
-              sessionStorage.clear(); // This clears everything including exam-start timer
+              localStorage.removeItem(`exam-start-${studentId}`);
+              sessionStorage.clear();
               router.push("/");
             }}
             className="w-full bg-[#FFE600] border-[4px] border-black p-5 text-2xl font-black uppercase text-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
@@ -507,7 +580,6 @@ export default function ActiveExamPage() {
     );
   }
 
-  // 2. FINISHED SCREEN (GREEN)
   if (isFinished) {
     return (
       <div
@@ -529,6 +601,7 @@ export default function ActiveExamPage() {
           </p>
           <button
             onClick={() => {
+              localStorage.removeItem(`exam-start-${studentId}`);
               sessionStorage.clear();
               router.push("/");
             }}
@@ -541,7 +614,6 @@ export default function ActiveExamPage() {
     );
   }
 
-  // 3. DETENTION SCREEN (PINK)
   if (isDetention) {
     return (
       <div
@@ -586,17 +658,14 @@ export default function ActiveExamPage() {
     );
   }
 
-  // --- ACTIVE EXAM UI ---
   const currentQuestion = questions[currentIndex];
   const progressPercent =
     questions.length > 0 ? (currentIndex / questions.length) * 100 : 0;
-
   const formatTime = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
-
   const isTimeRunningOut = examTimeLeft !== null && examTimeLeft <= 60;
 
   if (!currentQuestion)

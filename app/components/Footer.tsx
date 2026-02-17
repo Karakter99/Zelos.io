@@ -9,7 +9,7 @@ export default function Footer() {
           System Operational
         </div>
         <span className="text-gray-500 hidden md:block tracking-widest font-mono text-sm">
-          v2.4.0
+          Yakup Akyniyazov
         </span>
       </div>
 

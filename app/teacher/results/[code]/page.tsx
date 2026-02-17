@@ -47,6 +47,7 @@ export default function TeacherResultsPage() {
 
   const [exam, setExam] = useState<Exam | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const [totalQuestions, setTotalQuestions] = useState(1); // 🟢 Force true question count
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [studentAnswers, setStudentAnswers] = useState<StudentAnswer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,16 +57,26 @@ export default function TeacherResultsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get exam details
+        // 1. Get exam details
         const { data: examData } = await supabase
           .from("exams")
           .select("*")
           .ilike("code", examCode)
           .single();
 
-        if (examData) setExam(examData);
+        if (examData) {
+          setExam(examData);
 
-        // Get all students who took this exam
+          // 2. 🟢 Get the TRUE total questions count directly from the exam
+          const { count } = await supabase
+            .from("questions")
+            .select("*", { count: "exact", head: true })
+            .eq("exam_id", examData.id);
+
+          if (count) setTotalQuestions(count);
+        }
+
+        // 3. Get all students who took this exam
         const { data: studentData } = await supabase
           .from("students")
           .select("*")
@@ -73,7 +84,7 @@ export default function TeacherResultsPage() {
           .order("created_at", { ascending: false });
 
         if (studentData) setStudents(studentData);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("Fetch error:", err);
       } finally {
         setLoading(false);
@@ -88,37 +99,55 @@ export default function TeacherResultsPage() {
     setSelectedStudent(student);
     setViewingAnswers(true);
 
-    const { data: answers } = await supabase
-      .from("student_answers")
-      .select("*")
-      .eq("student_id", student.id)
-      .order("answered_at", { ascending: true });
+    try {
+      const { data: answers } = await supabase
+        .from("student_answers")
+        .select("*")
+        .eq("student_id", student.id)
+        .order("answered_at", { ascending: true });
 
-    if (answers) setStudentAnswers(answers);
+      if (answers) setStudentAnswers(answers);
+    } catch (err: unknown) {
+      console.error("Answers fetch error:", err);
+    }
   };
 
-  // Calculate statistics
+  // 🟢 REAL MATH CALCULATIONS 🟢
   const finishedStudents = students.filter((s) => s.status === "finished");
+
+  // Calculate true percentages for everyone first
+  const studentPercentages = finishedStudents.map((s) => {
+    const correct = s.score || 0;
+    return Math.round((correct / totalQuestions) * 100);
+  });
+
   const avgScore =
-    finishedStudents.length > 0
+    studentPercentages.length > 0
       ? Math.round(
-          finishedStudents.reduce((sum, s) => sum + (s.score || 0), 0) /
-            finishedStudents.length,
+          studentPercentages.reduce((sum, score) => sum + score, 0) /
+            studentPercentages.length,
         )
       : 0;
-  const highestScore = Math.max(...finishedStudents.map((s) => s.score || 0));
 
-  // Export to CSV
+  const highestScore =
+    studentPercentages.length > 0 ? Math.max(...studentPercentages) : 0;
+
+  // Export to CSV (Updated Math)
   const exportToCSV = () => {
-    const headers = ["Name", "Score", "Correct", "Total", "Status", "Date"];
-    const rows = students.map((s) => [
-      s.name,
-      s.score || "N/A",
-      s.correct_answers || "N/A",
-      s.total_questions || "N/A",
-      s.status,
-      new Date(s.created_at).toLocaleString(),
-    ]);
+    const headers = ["Name", "Score (%)", "Correct", "Total", "Status", "Date"];
+    const rows = students.map((s) => {
+      const correct = s.score || 0;
+      const percentage = Math.round((correct / totalQuestions) * 100);
+
+      return [
+        s.name,
+        `${percentage}%`,
+        correct,
+        totalQuestions,
+        s.status,
+        new Date(s.created_at).toLocaleString(),
+      ];
+    });
 
     const csv = [headers.join(","), ...rows.map((row) => row.join(","))].join(
       "\n",
@@ -134,14 +163,19 @@ export default function TeacherResultsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FFE600] flex items-center justify-center font-black text-6xl">
+      <div className="min-h-screen bg-[#FFE600] flex items-center justify-center font-black text-6xl border-[16px] border-black">
         Loading Results...
       </div>
     );
   }
 
-  // Student Detail View
+  // 🟢 STUDENT DETAIL VIEW 🟢
   if (viewingAnswers && selectedStudent) {
+    const studentCorrectCount = selectedStudent.score || 0;
+    const studentPercentage = Math.round(
+      (studentCorrectCount / totalQuestions) * 100,
+    );
+
     return (
       <div
         className="min-h-screen flex flex-col font-sans bg-[#f5f8f8]"
@@ -167,15 +201,12 @@ export default function TeacherResultsPage() {
             </h1>
             <div className="flex flex-wrap gap-4">
               <div className="bg-[#00E57A] border-4 border-black px-6 py-3">
-                <div className="text-4xl font-black">
-                  {selectedStudent.score}%
-                </div>
+                <div className="text-4xl font-black">{studentPercentage}%</div>
                 <div className="text-sm font-black uppercase">Final Score</div>
               </div>
               <div className="bg-[#5A87FF] border-4 border-black px-6 py-3 text-white">
                 <div className="text-4xl font-black">
-                  {selectedStudent.correct_answers} /{" "}
-                  {selectedStudent.total_questions}
+                  {studentCorrectCount} / {totalQuestions}
                 </div>
                 <div className="text-sm font-black uppercase">Correct</div>
               </div>
@@ -184,13 +215,18 @@ export default function TeacherResultsPage() {
 
           {/* Individual Answers */}
           <div className="space-y-6">
-            <h2 className="text-3xl font-black uppercase">
+            <h2 className="text-3xl font-black uppercase bg-white border-4 border-black inline-block px-4 py-2 shadow-[4px_4px_0px_0px_#000]">
               Question by Question
             </h2>
+            {studentAnswers.length === 0 && (
+              <div className="bg-white border-4 border-black p-8 text-xl font-bold">
+                No answers recorded for this student.
+              </div>
+            )}
             {studentAnswers.map((answer, idx) => (
               <div
                 key={answer.id}
-                className={`border-[6px] border-black p-6 ${answer.is_correct ? "bg-[#00E57A]" : "bg-[#FF6B9E]"}`}
+                className={`border-[6px] border-black p-6 shadow-[8px_8px_0px_0px_#000] ${answer.is_correct ? "bg-[#00E57A]" : "bg-[#FF6B9E]"}`}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -206,7 +242,7 @@ export default function TeacherResultsPage() {
                       <XCircle className="w-8 h-8 text-black" strokeWidth={3} />
                     )}
                   </div>
-                  <div className="text-sm font-black uppercase bg-black text-white px-3 py-1">
+                  <div className="text-sm font-black uppercase bg-black text-white px-3 py-1 border-2 border-black shadow-[2px_2px_0px_0px_#fff]">
                     {answer.is_correct ? "Correct" : "Incorrect"}
                   </div>
                 </div>
@@ -215,7 +251,7 @@ export default function TeacherResultsPage() {
                   {answer.question_text}
                 </h3>
 
-                <div className="space-y-2">
+                <div className="space-y-2 bg-white/50 p-4 border-4 border-black">
                   <div className="flex gap-2">
                     <span className="font-black uppercase text-sm">
                       Student Answer:
@@ -242,7 +278,7 @@ export default function TeacherResultsPage() {
     );
   }
 
-  // Main Results Dashboard
+  // 🟢 MAIN RESULTS DASHBOARD 🟢
   return (
     <div
       className="min-h-screen flex flex-col font-sans bg-[#FFE600]"
@@ -257,7 +293,7 @@ export default function TeacherResultsPage() {
         <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 mb-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
-              <div className="bg-black text-white inline-block px-4 py-1 font-black uppercase text-sm mb-4">
+              <div className="bg-black text-white inline-block px-4 py-1 font-black uppercase text-sm mb-4 border-2 border-black shadow-[2px_2px_0px_0px_#25c0f4]">
                 Results Dashboard
               </div>
               <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-none">
@@ -273,9 +309,9 @@ export default function TeacherResultsPage() {
 
             <button
               onClick={exportToCSV}
-              className="bg-[#25c0f4] border-4 border-black px-6 py-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center gap-2"
+              className="bg-[#25c0f4] border-4 border-black px-6 py-3 font-black uppercase shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center gap-2"
             >
-              <Download className="w-5 h-5" />
+              <Download className="w-6 h-6 stroke-[3]" />
               Export CSV
             </button>
           </div>
@@ -283,17 +319,17 @@ export default function TeacherResultsPage() {
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6">
+          <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6 hover:-translate-y-1 transition-transform">
             <Users className="w-10 h-10 text-white mb-2" strokeWidth={3} />
             <div className="text-4xl font-black text-white">
               {students.length}
             </div>
-            <div className="text-sm font-black uppercase text-white">
+            <div className="text-sm font-black uppercase text-white tracking-widest mt-1">
               Total Students
             </div>
           </div>
 
-          <div className="bg-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6">
+          <div className="bg-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6 hover:-translate-y-1 transition-transform">
             <CheckCircle2
               className="w-10 h-10 text-black mb-2"
               strokeWidth={3}
@@ -301,43 +337,49 @@ export default function TeacherResultsPage() {
             <div className="text-4xl font-black text-black">
               {finishedStudents.length}
             </div>
-            <div className="text-sm font-black uppercase">Completed</div>
+            <div className="text-sm font-black uppercase tracking-widest mt-1">
+              Completed
+            </div>
           </div>
 
-          <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6">
+          <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6 hover:-translate-y-1 transition-transform">
             <TrendingUp className="w-10 h-10 text-black mb-2" strokeWidth={3} />
             <div className="text-4xl font-black text-black">{avgScore}%</div>
-            <div className="text-sm font-black uppercase">Average Score</div>
+            <div className="text-sm font-black uppercase tracking-widest mt-1">
+              Average Score
+            </div>
           </div>
 
-          <div className="bg-white border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6">
+          <div className="bg-white border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6 hover:-translate-y-1 transition-transform">
             <Award className="w-10 h-10 text-black mb-2" strokeWidth={3} />
             <div className="text-4xl font-black text-black">
               {highestScore}%
             </div>
-            <div className="text-sm font-black uppercase">Highest Score</div>
+            <div className="text-sm font-black uppercase tracking-widest mt-1">
+              Highest Score
+            </div>
           </div>
         </div>
 
         {/* Students Table */}
         <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000]">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-left">
               <thead>
-                <tr className="bg-black text-white">
-                  <th className="text-left p-4 font-black uppercase text-sm">
+                <tr className="bg-black text-white border-b-4 border-black">
+                  <th className="p-4 font-black uppercase text-sm tracking-widest">
                     Student Name
                   </th>
-                  <th className="text-left p-4 font-black uppercase text-sm">
+                  <th className="p-4 font-black uppercase text-sm tracking-widest">
                     Score
                   </th>
-                  <th className="text-left p-4 font-black uppercase text-sm">
+                  <th className="p-4 font-black uppercase text-sm tracking-widest">
                     Correct
                   </th>
-                  <th className="text-left p-4 font-black uppercase text-sm">
+                  <th className="p-4 font-black uppercase text-sm tracking-widest">
                     Status
                   </th>
-                  <th className="text-left p-4 font-black uppercase text-sm">
+                  <th className="p-4 font-black uppercase text-sm tracking-widest">
                     Actions
                   </th>
                 </tr>
@@ -345,49 +387,58 @@ export default function TeacherResultsPage() {
               <tbody>
                 {students.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center font-bold">
-                      No students have taken this exam yet.
+                    <td
+                      colSpan={5}
+                      className="p-8 text-center font-black uppercase text-xl"
+                    >
+                      Awaiting initial student data...
                     </td>
                   </tr>
                 )}
                 {students.map((student) => {
                   const isFinished = student.status === "finished";
-                  const score = student.score || 0;
-                  let scoreColor = "bg-[#FF6B9E]"; // Red for low scores
-                  if (score >= 80)
-                    scoreColor = "bg-[#00E57A]"; // Green
-                  else if (score >= 60) scoreColor = "bg-[#FFE600]"; // Yellow
+                  const correctCount = student.score || 0;
+                  const percentage = Math.round(
+                    (correctCount / totalQuestions) * 100,
+                  );
+
+                  // Dynamic Brutalist Colors
+                  let scoreColor = "bg-[#FF6B9E]";
+                  if (percentage >= 80) scoreColor = "bg-[#00E57A]";
+                  else if (percentage >= 60) scoreColor = "bg-[#FFE600]";
 
                   return (
                     <tr
                       key={student.id}
-                      className="border-b-4 border-black last:border-0"
+                      className="border-b-4 border-black last:border-0 hover:bg-gray-50 transition-colors"
                     >
-                      <td className="p-4 font-bold uppercase">
+                      <td className="p-4 font-black uppercase tracking-tight text-lg">
                         {student.name}
                       </td>
                       <td className="p-4">
                         {isFinished ? (
                           <span
-                            className={`${scoreColor} px-4 py-2 border-4 border-black font-black text-2xl inline-block`}
+                            className={`${scoreColor} px-3 py-1 border-4 border-black font-black text-xl shadow-[2px_2px_0px_0px_#000] inline-block`}
                           >
-                            {student.score}%
+                            {percentage}%
                           </span>
                         ) : (
-                          <span className="text-gray-400 font-bold">—</span>
+                          <span className="text-black/30 font-black text-xl">
+                            —
+                          </span>
                         )}
                       </td>
-                      <td className="p-4 font-bold">
+                      <td className="p-4 font-black text-xl tracking-tighter">
                         {isFinished
-                          ? `${student.correct_answers} / ${student.total_questions}`
+                          ? `${correctCount} / ${totalQuestions}`
                           : "—"}
                       </td>
                       <td className="p-4">
                         <span
-                          className={`px-3 py-1 font-black uppercase text-xs border-2 border-black ${
+                          className={`px-3 py-1 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_#000] ${
                             isFinished
-                              ? "bg-[#00E57A]"
-                              : "bg-gray-200 text-gray-600"
+                              ? "bg-[#00E57A] text-black"
+                              : "bg-white text-black/50 border-black/50 shadow-none"
                           }`}
                         >
                           {student.status}
@@ -399,7 +450,7 @@ export default function TeacherResultsPage() {
                             onClick={() => viewStudentAnswers(student)}
                             className="bg-[#5A87FF] text-white border-4 border-black px-4 py-2 font-black uppercase text-sm shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center gap-2"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-5 h-5 stroke-[3]" />
                             View Answers
                           </button>
                         )}

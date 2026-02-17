@@ -51,7 +51,7 @@ export default function Navbar() {
           <SquareTerminal className="w-8 h-8 text-white" strokeWidth={3} />
         </div>
         <span className="font-black text-3xl tracking-tighter text-black">
-          ExamFlow
+          Zelos
         </span>
       </Link>
 

@@ -13,6 +13,7 @@ import {
   Eye,
   History,
   Download,
+  Clock, // 🟢 Added Clock icon for the timer
 } from "lucide-react";
 
 interface Question {
@@ -38,6 +39,7 @@ export default function CreateExamPage() {
   const [teacherEmail, setTeacherEmail] = useState<string | null>(null);
 
   const [examTitle, setExamTitle] = useState("");
+  const [timeLimit, setTimeLimit] = useState<number | "">(60); // 🟢 New state for Time Limit
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
@@ -140,6 +142,11 @@ export default function CreateExamPage() {
       return;
     }
 
+    // 🟢 Validation for time limit
+    if (timeLimit === "" || timeLimit < 1) {
+      alert("Time limit must be at least 1 minute.");
+      return;
+    }
     if (!teacherId) {
       alert("You must be logged in to create an exam!");
       router.push("/teacher/login");
@@ -152,7 +159,7 @@ export default function CreateExamPage() {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
       console.log("1. Starting Exam Upload...");
 
-      // Step 1: Create the Exam linked to this teacher
+      // Step 1: Create the Exam linked to this teacher (WITH TIME LIMIT)
       const { data: exam, error: examError } = await supabase
         .from("exams")
         .insert([
@@ -160,8 +167,9 @@ export default function CreateExamPage() {
             title: examTitle,
             code: code,
             is_active: true,
-            teacher_id: teacherId, // ✅ Link to logged-in teacher
+            teacher_id: teacherId,
             created_by_email: teacherEmail,
+            time_limit: timeLimit, // 🟢 Save time limit to database
           },
         ])
         .select("id")
@@ -233,30 +241,52 @@ export default function CreateExamPage() {
         }}
       >
         <div className="max-w-6xl mx-auto space-y-10">
-          {/* Page Header */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          {/* Page Header & Settings */}
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
             <div>
               <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none text-black">
                 Upload
                 <br />
                 Questions
               </h1>
-              <p className="mt-4 text-xl font-bold uppercase bg-black text-white inline-block px-4 py-1">
+              <p className="mt-4 text-xl font-bold uppercase bg-black text-white inline-block px-4 py-1 shadow-[4px_4px_0px_0px_#25c0f4]">
                 Batch create via spreadsheet
               </p>
             </div>
 
-            <div className="flex flex-col gap-4">
-              <label className=" block text-sm font-black uppercase tracking-widest text-black">
-                Exam Title
-              </label>
-              <input
-                type="text"
-                value={examTitle}
-                onChange={(e) => setExamTitle(e.target.value)}
-                placeholder="E.G. PHYSICS MIDTERM"
-                className=" text-black bg-white border-4 border-black p-4 text-xl font-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
-              />
+            {/* 🟢 Title and Time Limit Inputs */}
+            <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+              {/* Exam Title Input */}
+              <div className="flex flex-col gap-2 flex-grow">
+                <label className="text-sm font-black uppercase tracking-widest text-black">
+                  Exam Title
+                </label>
+                <input
+                  type="text"
+                  value={examTitle}
+                  onChange={(e) => setExamTitle(e.target.value)}
+                  placeholder="E.G. PHYSICS MIDTERM"
+                  className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                />
+              </div>
+
+              {/* Time Limit Input */}
+              <div className="flex flex-col gap-2 sm:w-48 shrink-0">
+                <label className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> Time (Mins)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={timeLimit}
+                  onChange={(e) =>
+                    setTimeLimit(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
+                  }
+                  className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black text-center shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                />
+              </div>
             </div>
           </div>
 

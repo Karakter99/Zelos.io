@@ -109,7 +109,7 @@ export default function ActiveExamPage() {
   // --- LOADING SCREEN ---
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-6xl uppercase border-[16px] border-black">
+      <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-6xl uppercase border-16px border-black">
         Loading Questions...
       </div>
     );

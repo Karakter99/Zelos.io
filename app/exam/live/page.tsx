@@ -40,6 +40,7 @@ export default function ActiveExamPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState("");
   const [isFinished, setIsFinished] = useState(false);
+  const [isTimedOut, setIsTimedOut] = useState(false); // 🟢 NEW: Friendly Time's Up State
   const [studentId, setStudentId] = useState("");
   const [examId, setExamId] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -54,13 +55,18 @@ export default function ActiveExamPage() {
   const [examEndTime, setExamEndTime] = useState<number | null>(null);
   const [examTimeLeft, setExamTimeLeft] = useState<number | null>(null);
 
+  // 🟢 UPDATED: FORCE SUBMIT (Clears detention & saves as 'finished')
   const forceSubmitExam = useCallback(async () => {
-    setIsFinished(true);
+    setIsTimedOut(true); // Trigger the Blue Screen
+    setIsDetention(false); // Visually clear detention
+    setDetentionEndTime(null);
+
     try {
       await supabase
         .from("students")
         .update({
-          status: "finished",
+          status: "finished", // 🟢 Saves as normal 'finished' so Teacher can grade it
+          detention_end_time: null,
           current_question_index: questions.length,
         })
         .eq("id", studentId);
@@ -91,8 +97,12 @@ export default function ActiveExamPage() {
 
         if (studentData) {
           if (studentData.score) setScore(studentData.score);
+          if (studentData.status === "finished") setIsFinished(true);
 
-          if (studentData.detention_end_time) {
+          if (
+            studentData.detention_end_time &&
+            studentData.status !== "finished"
+          ) {
             const remainingMs =
               new Date(studentData.detention_end_time).getTime() - Date.now();
             if (remainingMs > 0) {
@@ -116,11 +126,8 @@ export default function ActiveExamPage() {
         if (examErr || !examData) throw new Error("Could not find exam.");
         setExamId(examData.id);
 
-        // 🟢 FIX 1: BULLETPROOF TIMEZONE DESYNC HANDLER 🟢
         if (examData.time_limit && studentData?.created_at) {
           let dbTime = studentData.created_at;
-
-          // If Supabase forgot to mark it as UTC, we forcefully add the "Z"
           if (!dbTime.includes("Z") && !dbTime.includes("+")) {
             dbTime += "Z";
           }
@@ -176,36 +183,33 @@ export default function ActiveExamPage() {
     startExam();
   }, [router]);
 
-  // 🟢 FIX 2: INSTANT TIMER UPDATE (Prevents the 1-second lag gap) 🟢
   useEffect(() => {
-    if (!examEndTime || isFinished) return;
+    if (!examEndTime || isFinished || isTimedOut) return;
 
     const checkTime = () => {
       const remainingMs = examEndTime - Date.now();
       if (remainingMs <= 0) {
         setExamTimeLeft(0);
-        forceSubmitExam(); // Time is UP!
+        forceSubmitExam();
         return true;
       }
       setExamTimeLeft(Math.floor(remainingMs / 1000));
       return false;
     };
 
-    // Run the check instantly on load
     const isTimeUp = checkTime();
-    if (isTimeUp) return; // If time is already up, stop here!
+    if (isTimeUp) return;
 
-    // Otherwise, start ticking every second
     const timer = setInterval(() => {
       const up = checkTime();
       if (up) clearInterval(timer);
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [examEndTime, isFinished, forceSubmitExam]);
+  }, [examEndTime, isFinished, isTimedOut, forceSubmitExam]);
 
   useEffect(() => {
-    if (!studentId || isFinished || isDetention) return;
+    if (!studentId || isFinished || isTimedOut || isDetention) return;
 
     const triggerDetention = async () => {
       const penaltyEndTime = new Date(Date.now() + 120000).toISOString();
@@ -236,7 +240,7 @@ export default function ActiveExamPage() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [studentId, isFinished, isDetention]);
+  }, [studentId, isFinished, isTimedOut, isDetention]);
 
   useEffect(() => {
     if (!isDetention || !detentionEndTime) return;
@@ -310,21 +314,15 @@ export default function ActiveExamPage() {
         setScore(newScore);
       }
 
-      const { error: answerError } = await supabase
-        .from("student_answers")
-        .insert({
-          student_id: studentId,
-          exam_id: examId,
-          question_id: currentQ.id,
-          question_text: currentQ.text,
-          selected_answer: studentLetter,
-          correct_answer: dbCorrectLetter,
-          is_correct: isCorrect,
-        });
-
-      if (answerError) {
-        console.error("❌ SUPABASE INSERT ERROR:", answerError.message);
-      }
+      await supabase.from("student_answers").insert({
+        student_id: studentId,
+        exam_id: examId,
+        question_id: currentQ.id,
+        question_text: currentQ.text,
+        selected_answer: studentLetter,
+        correct_answer: dbCorrectLetter,
+        is_correct: isCorrect,
+      });
 
       if (!isLastQuestion) {
         const nextIndex = currentIndex + 1;
@@ -357,14 +355,85 @@ export default function ActiveExamPage() {
     }
   };
 
+  // --- RENDERING SCREENS ---
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-4xl md:text-5xl uppercase border-[8px] border-black">
-        Loading Questions...
+        Loading...
       </div>
     );
   }
 
+  // 🟢 1. NEW TIMED OUT SCREEN (BLUE) 🟢
+  if (isTimedOut) {
+    return (
+      <div
+        className="min-h-screen bg-[#5A87FF] flex flex-col items-center justify-center p-6 text-center selection:bg-black selection:text-[#5A87FF]"
+        style={{
+          backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+          backgroundSize: "32px 32px",
+        }}
+      >
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full animate-in zoom-in duration-500">
+          <div className="size-24 bg-black text-[#5A87FF] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#FFE600] rotate-3">
+            <Clock className="w-16 h-16 stroke-[3]" />
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-black mb-4 leading-none">
+            Time&apos;s Up!
+          </h1>
+          <p className="text-xl font-bold uppercase tracking-widest text-black/70 mb-10">
+            Your exam time has ended. Your answers have been securely saved.
+          </p>
+          <button
+            onClick={() => {
+              sessionStorage.clear();
+              router.push("/");
+            }}
+            className="w-full bg-[#FFE600] border-[4px] border-black p-5 text-2xl font-black uppercase text-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+          >
+            Return to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. FINISHED SCREEN (GREEN)
+  if (isFinished) {
+    return (
+      <div
+        className="min-h-screen bg-[#00E57A] flex flex-col items-center justify-center p-6 text-center selection:bg-black selection:text-[#00E57A]"
+        style={{
+          backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+          backgroundSize: "32px 32px",
+        }}
+      >
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full animate-in zoom-in duration-500">
+          <div className="size-24 bg-black text-[#00E57A] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#FFE600] rotate-3">
+            <CheckCircle2 className="w-16 h-16 stroke-[3]" />
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-black mb-4 leading-none">
+            Exam Complete!
+          </h1>
+          <p className="text-xl font-bold uppercase tracking-widest text-black/70 mb-10">
+            Your answers have been securely submitted.
+          </p>
+          <button
+            onClick={() => {
+              sessionStorage.clear();
+              router.push("/");
+            }}
+            className="w-full bg-[#25c0f4] border-[4px] border-black p-5 text-2xl font-black uppercase text-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+          >
+            Return to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. DETENTION SCREEN (PINK)
   if (isDetention) {
     return (
       <div
@@ -409,39 +478,7 @@ export default function ActiveExamPage() {
     );
   }
 
-  if (isFinished) {
-    return (
-      <div
-        className="min-h-screen bg-[#00E57A] flex flex-col items-center justify-center p-6 text-center selection:bg-black selection:text-[#00E57A]"
-        style={{
-          backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
-          backgroundSize: "32px 32px",
-        }}
-      >
-        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full animate-in zoom-in duration-500">
-          <div className="size-24 bg-black text-[#00E57A] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#FFE600] rotate-3">
-            <CheckCircle2 className="w-16 h-16 stroke-[3]" />
-          </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-black mb-4 leading-none">
-            Exam Complete!
-          </h1>
-          <p className="text-xl font-bold uppercase tracking-widest text-black/70 mb-10">
-            Your answers have been securely submitted.
-          </p>
-          <button
-            onClick={() => {
-              sessionStorage.clear();
-              router.push("/");
-            }}
-            className="w-full bg-[#25c0f4] border-[4px] border-black p-5 text-2xl font-black uppercase text-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-          >
-            Return to Home
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // --- ACTIVE EXAM UI ---
   const currentQuestion = questions[currentIndex];
   const progressPercent =
     questions.length > 0 ? (currentIndex / questions.length) * 100 : 0;
@@ -454,15 +491,12 @@ export default function ActiveExamPage() {
 
   const isTimeRunningOut = examTimeLeft !== null && examTimeLeft <= 60;
 
-  if (!currentQuestion) {
+  if (!currentQuestion)
     return (
-      <div className="min-h-screen bg-[#FF6B9E] flex items-center justify-center font-black text-3xl md:text-5xl uppercase border-[8px] border-black p-6 text-center">
-        Error locating questions.
-        <br />
-        Please refresh the page.
+      <div className="min-h-screen bg-[#FF6B9E] flex items-center justify-center font-black text-5xl border-[8px] border-black">
+        Error loading questions.
       </div>
     );
-  }
 
   return (
     <div

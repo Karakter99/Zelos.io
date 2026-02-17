@@ -86,7 +86,7 @@ export default function Navbar() {
               href="/teacher"
               className="hidden md:flex items-center gap-2 bg-[#00E57A] text-black px-5 py-2 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all font-black uppercase tracking-tight"
             >
-              <User className="w-5 h-5 stroke-[3]" />
+              <User className="w-5 h-5 stroke-3" />
               {/* Extract the full name from the metadata we saved during signup */}
               {user.user_metadata?.full_name || "Dashboard"}
             </Link>

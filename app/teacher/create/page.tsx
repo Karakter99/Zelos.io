@@ -317,9 +317,9 @@ export default function CreateExamPage() {
 
               <div className="size-32 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] flex items-center justify-center mb-8 rotate-3 group-hover:rotate-0 transition-transform">
                 {questions.length > 0 ? (
-                  <Check className="w-16 h-16 text-black stroke-[3]" />
+                  <Check className="w-16 h-16 text-black stroke-3" />
                 ) : (
-                  <UploadCloud className="w-16 h-16 text-black stroke-[3]" />
+                  <UploadCloud className="w-16 h-16 text-black stroke-3" />
                 )}
               </div>
 

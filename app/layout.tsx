@@ -37,7 +37,9 @@ export default function RootLayout({
           This prevents errors if the variable is missing 
           during local development.
       */}
-      {gaId && <GoogleAnalytics gaId={gaId} />}
+      {gaId && (
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID as string} />
+      )}
     </html>
   );
 }

@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GraduationCap, SquareTerminal, Eye, EyeOff } from "lucide-react";
+import {
+  GraduationCap,
+  SquareTerminal,
+  Eye,
+  EyeOff,
+  Mail,
+  AlertTriangle,
+} from "lucide-react";
 import Navbar from "../../components/Navbar";
 import SuccessOverlay from "../../components/SuccessOverlay";
 import { supabase } from "../../utils/Supabase/client";
@@ -13,8 +20,11 @@ export default function TeacherSignUp() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // State for the success overlay
+  // State for the success overlay (Instant Login)
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // 🟢 NEW: State for "Check Email" overlay (Verification Required)
+  const [showCheckEmail, setShowCheckEmail] = useState(false);
 
   // Form State
   const [fullName, setFullName] = useState("");
@@ -45,53 +55,41 @@ export default function TeacherSignUp() {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
 
     try {
-      // 1. Create auth user with Supabase Auth
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
         options: {
           data: {
-            // This data gets stored in auth.users.raw_user_meta_data
-            // Our trigger will read it to create the teacher profile
             full_name: fullName.trim(),
             school_name: schoolName.trim() || null,
+            role: "teacher", // Ensure role is saved
           },
-          emailRedirectTo: `${window.location.origin}/teacher/login`,
+          // 🟢 CRITICAL: Send them to the callback route to handle the login token
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
       if (error) throw error;
 
-      // 2. Check if email confirmation is required
+      // 🟢 CHECK: Did Supabase create a user BUT NOT a session?
+      // This means "Confirm Email" is ON in your Supabase settings.
       if (data.user && !data.session) {
-        // Email confirmation required
-        setErrorMessage(
-          "✅ Account created! Please check your email to verify your account before logging in.",
-        );
         setLoading(false);
-
-        // Redirect to login after 3 seconds
-        setTimeout(() => {
-          router.push("/teacher/login");
-        }, 3000);
+        setShowCheckEmail(true); // <--- SHOW THE EMAIL SCREEN
         return;
       }
 
-      // 3. Success! User is automatically logged in
-      // The trigger automatically created their teacher profile
+      // If we got a session immediately, it means "Confirm Email" is OFF.
+      // Proceed as normal.
       setShowSuccess(true);
     } catch (error: unknown) {
       console.error("Signup error:", error);
-
       if (error instanceof Error) {
-        // Handle specific Supabase errors
         if (error.message.includes("User already registered")) {
           setErrorMessage(
             "This email is already registered. Please log in instead.",
@@ -108,6 +106,51 @@ export default function TeacherSignUp() {
     }
   };
 
+  // 🟢 1. "CHECK YOUR INBOX" SCREEN
+  if (showCheckEmail) {
+    return (
+      <div
+        className="min-h-screen bg-[#FFE600] flex flex-col items-center justify-center p-6 text-black"
+        style={{
+          backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+          backgroundSize: "32px 32px",
+        }}
+      >
+        <Navbar />
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 max-w-md w-full text-center animate-in zoom-in duration-300 relative z-10">
+          <div className="size-24 bg-[#25c0f4] border-4 border-black flex items-center justify-center mx-auto mb-8 shadow-[4px_4px_0px_0px_#000] rotate-3">
+            <Mail className="w-12 h-12 stroke-[3] text-black" />
+          </div>
+          <h1 className="text-4xl font-black uppercase tracking-tighter mb-4 leading-none">
+            Check Your Inbox!
+          </h1>
+          <p className="font-bold text-lg mb-8">
+            We sent a secure verification link to: <br />
+            <span className="bg-[#FFE600] px-2 border-2 border-black mt-2 inline-block">
+              {email}
+            </span>
+          </p>
+
+          <div className="bg-gray-100 border-l-8 border-black p-4 mb-8 text-sm font-bold text-left flex gap-3">
+            <AlertTriangle className="w-8 h-8 shrink-0 text-[#FF6B9E]" />
+            <span>
+              You cannot log in until you click the link in that email. Check
+              your spam folder!
+            </span>
+          </div>
+
+          <Link
+            href="/teacher/login"
+            className="block w-full bg-black text-white font-black uppercase py-4 border-4 border-black hover:bg-[#FF6B9E] hover:text-black transition-all shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none"
+          >
+            Return to Login
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // 🟢 2. REGULAR SIGN UP FORM
   return (
     <div
       className="min-h-screen flex flex-col font-sans overflow-x-hidden bg-[#facc15] selection:bg-black selection:text-[#facc15]"
@@ -119,7 +162,7 @@ export default function TeacherSignUp() {
     >
       <Navbar />
 
-      {/* --- Floating Background Letters (Hollow Stroke Effect) --- */}
+      {/* --- Floating Background Letters --- */}
       <div
         className="absolute z-0 font-black text-transparent opacity-20 pointer-events-none select-none text-9xl top-20 left-10 -rotate-12"
         style={{ WebkitTextStroke: "2px black" }}
@@ -142,7 +185,6 @@ export default function TeacherSignUp() {
       {/* --- Main Content Area --- */}
       <main className="flex-grow flex items-center justify-center p-6 relative z-10 w-full mb-20">
         <div className="relative w-full max-w-[500px]">
-          {/* Decorative "Sticker" badge */}
           <div className="absolute -top-6 -right-6 bg-[#ff00ff] border-4 border-black p-3 rotate-12 shadow-[4px_4px_0px_0px_#000] hidden md:block z-20">
             <span className="text-white font-black uppercase text-xs tracking-tighter">
               Approved!
@@ -151,7 +193,6 @@ export default function TeacherSignUp() {
 
           {/* Main Sign Up Card */}
           <div className="bg-white border-[4px] border-black p-8 shadow-[8px_8px_0px_0px_#000] flex flex-col gap-6 relative z-10">
-            {/* Header Section */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 mb-2">
                 <div className="bg-[#25c0f4] border-2 border-black p-1 flex items-center justify-center">
@@ -162,30 +203,22 @@ export default function TeacherSignUp() {
                 </span>
               </div>
               <h1 className="text-5xl font-black text-black leading-none uppercase tracking-tighter">
-                Teacher <br />
-                Sign Up
+                Teacher <br /> Sign Up
               </h1>
               <p className="text-black/70 font-medium">
                 Create your educator account to start managing your classes.
               </p>
             </div>
 
-            {/* Error/Success Message */}
             {errorMessage && (
               <div
-                className={`p-4 border-4 font-bold text-sm ${
-                  errorMessage.startsWith("✅")
-                    ? "bg-[#00E57A] border-black"
-                    : "bg-[#FF6B9E] border-black"
-                }`}
+                className={`p-4 border-4 font-bold text-sm ${errorMessage.startsWith("✅") ? "bg-[#00E57A] border-black" : "bg-[#FF6B9E] border-black"}`}
               >
                 {errorMessage}
               </div>
             )}
 
-            {/* Form */}
             <form className="flex flex-col gap-5" onSubmit={handleSignUp}>
-              {/* Full Name */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
                   Full Name *
@@ -201,7 +234,6 @@ export default function TeacherSignUp() {
                 />
               </div>
 
-              {/* Email Address */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
                   Email Address *
@@ -217,7 +249,6 @@ export default function TeacherSignUp() {
                 />
               </div>
 
-              {/* School Name */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
                   School Name (Optional)
@@ -232,7 +263,6 @@ export default function TeacherSignUp() {
                 />
               </div>
 
-              {/* Password */}
               <div className="flex flex-col gap-2">
                 <label className="text-black font-black uppercase text-sm tracking-widest">
                   Password *
@@ -266,7 +296,6 @@ export default function TeacherSignUp() {
                 </p>
               </div>
 
-              {/* Action Button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -276,10 +305,9 @@ export default function TeacherSignUp() {
               </button>
             </form>
 
-            {/* Footer Link */}
             <div className="pt-4 border-t-4 border-black flex justify-center mt-2">
               <p className="text-black font-bold mt-4">
-                Already have an account?
+                Already have an account?{" "}
                 <Link
                   href="/teacher/login"
                   className="text-[#25c0f4] bg-black px-2 py-1 ml-2 hover:text-white transition-colors"
@@ -292,7 +320,6 @@ export default function TeacherSignUp() {
         </div>
       </main>
 
-      {/* --- Fixed Branding element at bottom left --- */}
       <div className="fixed bottom-6 left-6 flex items-center gap-3 z-20">
         <div className="w-12 h-12 bg-white border-4 border-black flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
           <SquareTerminal className="text-black w-7 h-7 stroke-[3]" />
@@ -302,7 +329,6 @@ export default function TeacherSignUp() {
         </div>
       </div>
 
-      {/* --- THE SUCCESS OVERLAY COMPONENT --- */}
       <SuccessOverlay
         isVisible={showSuccess}
         title="ACCOUNT CREATED!"

@@ -47,17 +47,15 @@ export default function TeacherResultsPage() {
 
   const [exam, setExam] = useState<Exam | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
-  const [totalQuestions, setTotalQuestions] = useState(1); // 🟢 Force true question count
+  const [totalQuestions, setTotalQuestions] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [studentAnswers, setStudentAnswers] = useState<StudentAnswer[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewingAnswers, setViewingAnswers] = useState(false);
 
-  // Fetch exam and students
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Get exam details
         const { data: examData } = await supabase
           .from("exams")
           .select("*")
@@ -67,7 +65,6 @@ export default function TeacherResultsPage() {
         if (examData) {
           setExam(examData);
 
-          // 2. 🟢 Get the TRUE total questions count directly from the exam
           const { count } = await supabase
             .from("questions")
             .select("*", { count: "exact", head: true })
@@ -76,7 +73,6 @@ export default function TeacherResultsPage() {
           if (count) setTotalQuestions(count);
         }
 
-        // 3. Get all students who took this exam
         const { data: studentData } = await supabase
           .from("students")
           .select("*")
@@ -94,7 +90,6 @@ export default function TeacherResultsPage() {
     fetchData();
   }, [examCode]);
 
-  // Fetch individual student's answers
   const viewStudentAnswers = async (student: Student) => {
     setSelectedStudent(student);
     setViewingAnswers(true);
@@ -112,10 +107,8 @@ export default function TeacherResultsPage() {
     }
   };
 
-  // 🟢 REAL MATH CALCULATIONS 🟢
   const finishedStudents = students.filter((s) => s.status === "finished");
 
-  // Calculate true percentages for everyone first
   const studentPercentages = finishedStudents.map((s) => {
     const correct = s.score || 0;
     return Math.round((correct / totalQuestions) * 100);
@@ -132,9 +125,15 @@ export default function TeacherResultsPage() {
   const highestScore =
     studentPercentages.length > 0 ? Math.max(...studentPercentages) : 0;
 
-  // Export to CSV (Updated Math)
   const exportToCSV = () => {
-    const headers = ["Name", "Score (%)", "Correct", "Total", "Status", "Date"];
+    const headers = [
+      "Name",
+      "Percentage (%)",
+      "Correct Answers",
+      "Total Questions",
+      "Status",
+      "Date",
+    ];
     const rows = students.map((s) => {
       const correct = s.score || 0;
       const percentage = Math.round((correct / totalQuestions) * 100);
@@ -186,7 +185,6 @@ export default function TeacherResultsPage() {
       >
         <Navbar />
         <main className="flex-grow p-6 md:p-12 max-w-6xl mx-auto w-full">
-          {/* Back Button */}
           <button
             onClick={() => setViewingAnswers(false)}
             className=" text-red-500 mb-8 bg-white border-4 border-black px-6 py-3 font-black uppercase shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
@@ -194,7 +192,6 @@ export default function TeacherResultsPage() {
             ← Back to Results
           </button>
 
-          {/* Student Header */}
           <div className="text-black bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 mb-8">
             <h1 className="text-5xl font-black uppercase tracking-tighter mb-4">
               {selectedStudent.name}
@@ -202,18 +199,19 @@ export default function TeacherResultsPage() {
             <div className="flex flex-wrap gap-4">
               <div className="bg-[#00E57A] border-4 border-black px-6 py-3">
                 <div className="text-4xl font-black">{studentPercentage}%</div>
-                <div className="text-sm font-black uppercase">Final Score</div>
+                <div className="text-sm font-black uppercase">Percentage</div>
               </div>
               <div className="bg-[#5A87FF] border-4 border-black px-6 py-3 text-white">
                 <div className="text-4xl font-black">
                   {studentCorrectCount} / {totalQuestions}
                 </div>
-                <div className="text-sm font-black uppercase">Correct</div>
+                <div className="text-sm font-black uppercase">
+                  Correct Answers
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Individual Answers */}
           <div className="space-y-6">
             <h2 className="text-black text-3xl font-black uppercase bg-white border-4 border-black inline-block px-4 py-2 shadow-[4px_4px_0px_0px_#000]">
               Question by Question
@@ -289,7 +287,6 @@ export default function TeacherResultsPage() {
     >
       <Navbar />
       <main className="flex-grow p-6 md:p-12 max-w-[1600px] mx-auto w-full">
-        {/* Header */}
         <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 mb-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
@@ -317,7 +314,6 @@ export default function TeacherResultsPage() {
           </div>
         </div>
 
-        {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-6 hover:-translate-y-1 transition-transform">
             <Users className="w-10 h-10 text-white mb-2" strokeWidth={3} />
@@ -361,7 +357,6 @@ export default function TeacherResultsPage() {
           </div>
         </div>
 
-        {/* Students Table */}
         <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000]">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -371,10 +366,10 @@ export default function TeacherResultsPage() {
                     Student Name
                   </th>
                   <th className="p-4 font-black uppercase text-sm tracking-widest">
-                    Score
+                    Percentage
                   </th>
                   <th className="p-4 font-black uppercase text-sm tracking-widest">
-                    Correct
+                    Correct Answers
                   </th>
                   <th className="p-4 font-black uppercase text-sm tracking-widest">
                     Status
@@ -402,7 +397,6 @@ export default function TeacherResultsPage() {
                     (correctCount / totalQuestions) * 100,
                   );
 
-                  // Dynamic Brutalist Colors
                   let scoreColor = "bg-[#FF6B9E]";
                   if (percentage >= 80) scoreColor = "bg-[#00E57A]";
                   else if (percentage >= 60) scoreColor = "bg-[#FFE600]";
@@ -415,10 +409,12 @@ export default function TeacherResultsPage() {
                       <td className="text-black p-4 font-black uppercase tracking-tight text-lg">
                         {student.name}
                       </td>
+
+                      {/* 🟢 Percentage Column */}
                       <td className="text-black p-4">
                         {isFinished ? (
                           <span
-                            className={`${scoreColor} px-3 py-1 border-4 border-black font-black text-xl shadow-[2px_2px_0px_0px_#000] inline-block`}
+                            className={`${scoreColor} px-3 py-1 border-4 border-black font-black text-xl shadow-[2px_2px_0px_0px_#000] inline-block whitespace-nowrap`}
                           >
                             {percentage}%
                           </span>
@@ -428,16 +424,25 @@ export default function TeacherResultsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="text-black p-4 font-black text-xl tracking-tighter">
-                        {isFinished
-                          ? `${correctCount} / ${totalQuestions}`
-                          : "—"}
+
+                      {/* 🟢 Correct Answers Column */}
+                      <td className="text-black p-4">
+                        {isFinished ? (
+                          <span className="bg-white px-3 py-1 border-4 border-black font-black text-xl shadow-[2px_2px_0px_0px_#000] inline-block whitespace-nowrap">
+                            {correctCount} / {totalQuestions}
+                          </span>
+                        ) : (
+                          <span className="text-black/30 font-black text-xl">
+                            —
+                          </span>
+                        )}
                       </td>
+
                       <td className="p-4">
                         <span
                           className={`px-3 py-1 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_#000] ${
                             isFinished
-                              ? "bg-[#00E57A] text-black"
+                              ? "bg-[#00E57A] text-black shadow-[2px_2px_0px_0px_#000]"
                               : "bg-white text-black/50 border-black/50 shadow-none"
                           }`}
                         >

@@ -64,6 +64,7 @@ export default function ActiveExamPage() {
   const [examEndTime, setExamEndTime] = useState<number | null>(null);
   const [examTimeLeft, setExamTimeLeft] = useState<number | null>(null);
 
+  // Local state to track answers in this session (extra layer of safety)
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<string>>(
     new Set(),
   );
@@ -74,19 +75,22 @@ export default function ActiveExamPage() {
     setDetentionEndTime(null);
 
     try {
-      await supabase
-        .from("students")
-        .update({
-          status: "finished",
-          detention_end_time: null,
-          current_question_index: questions.length,
-        })
-        .eq("id", studentId);
+      if (studentId) {
+        await supabase
+          .from("students")
+          .update({
+            status: "finished",
+            detention_end_time: null,
+            current_question_index: questions.length,
+          })
+          .eq("id", studentId);
+      }
     } catch (err: unknown) {
       console.error("Auto-submit failed", err);
     }
   }, [studentId, questions.length]);
 
+  // 🟢 1. INITIALIZATION & RESTORE PROGRESS 🟢
   useEffect(() => {
     const startExam = async () => {
       try {
@@ -101,6 +105,7 @@ export default function ActiveExamPage() {
 
         setStudentId(storedStudentId);
 
+        // Fetch Student Progress (Score, Index, Status)
         const { data: studentData } = await supabase
           .from("students")
           .select("status, detention_end_time, score, current_question_index")
@@ -108,9 +113,12 @@ export default function ActiveExamPage() {
           .single();
 
         if (studentData) {
+          // Restore Score
           if (studentData.score) setScore(studentData.score);
+          // Restore Finished Status
           if (studentData.status === "finished") setIsFinished(true);
 
+          // Restore Question Index (This prevents resetting to Q1)
           if (
             studentData.current_question_index !== null &&
             studentData.current_question_index !== undefined
@@ -118,6 +126,7 @@ export default function ActiveExamPage() {
             setCurrentIndex(studentData.current_question_index);
           }
 
+          // Restore Detention
           if (
             studentData.detention_end_time &&
             studentData.status !== "finished"
@@ -128,6 +137,7 @@ export default function ActiveExamPage() {
               setIsDetention(true);
               setDetentionEndTime(studentData.detention_end_time);
             } else {
+              // Detention time passed while offline -> unlock them
               await supabase
                 .from("students")
                 .update({ status: "active", detention_end_time: null })
@@ -136,6 +146,7 @@ export default function ActiveExamPage() {
           }
         }
 
+        // Fetch Exam Details
         const { data: examData, error: examErr } = await supabase
           .from("exams")
           .select("id, time_limit, status")
@@ -149,6 +160,7 @@ export default function ActiveExamPage() {
         setExamStatus(currentStatus);
         setExamTimeLimit(examData.time_limit);
 
+        // 🟢 RESTORE TIMER FROM LOCAL STORAGE 🟢
         if (
           currentStatus === "live" &&
           examData.time_limit &&
@@ -158,6 +170,7 @@ export default function ActiveExamPage() {
           let examStartTime = localStorage.getItem(storageKey);
 
           if (!examStartTime) {
+            // First time starting? Save NOW.
             examStartTime = Date.now().toString();
             localStorage.setItem(storageKey, examStartTime);
           }
@@ -172,6 +185,7 @@ export default function ActiveExamPage() {
           if (remainingMs <= 0) forceSubmitExam();
         }
 
+        // Load Questions
         const { data: questionsData, error: questionsErr } = await supabase
           .from("questions")
           .select("*")
@@ -181,6 +195,7 @@ export default function ActiveExamPage() {
           throw new Error("Could not load questions.");
 
         if (questionsData && questionsData.length > 0) {
+          // Restore Randomized Order
           const savedOrder = localStorage.getItem(
             `order-${storedExamCode}-${storedName}`,
           );
@@ -217,6 +232,7 @@ export default function ActiveExamPage() {
     startExam();
   }, [router, forceSubmitExam]);
 
+  // 🟢 2. REALTIME LISTENER (Exam Status) 🟢
   useEffect(() => {
     if (!examId) return;
     const channel = supabase
@@ -253,6 +269,7 @@ export default function ActiveExamPage() {
     };
   }, [examId, examTimeLimit, studentId]);
 
+  // 🟢 3. REALTIME LISTENER (Teacher Actions) 🟢
   useEffect(() => {
     if (!studentId) return;
 
@@ -282,8 +299,10 @@ export default function ActiveExamPage() {
           if (newStatus === "active" && !newEndTime) {
             setIsDetention(false);
             setDetentionEndTime(null);
+            // Only sync index if it's forward progress, to avoid glitches
             if (newQuestionIndex !== null && newQuestionIndex !== undefined) {
-              setCurrentIndex(newQuestionIndex);
+              // Optional: You can uncomment this if you want Teacher reset to force UI update
+              // setCurrentIndex(newQuestionIndex);
             }
           } else if (newStatus === "detention" && newEndTime) {
             setIsDetention(true);
@@ -298,6 +317,7 @@ export default function ActiveExamPage() {
     };
   }, [studentId]);
 
+  // Timer Logic
   useEffect(() => {
     if (!examEndTime || isFinished || isTimedOut || examStatus === "waiting")
       return;
@@ -322,6 +342,7 @@ export default function ActiveExamPage() {
     return () => clearInterval(timer);
   }, [examEndTime, isFinished, isTimedOut, examStatus, forceSubmitExam]);
 
+  // Cheat Detection (Visibility)
   useEffect(() => {
     if (
       !studentId ||
@@ -343,7 +364,7 @@ export default function ActiveExamPage() {
           .update({
             status: "detention",
             detention_end_time: penaltyEndTime,
-            current_question_index: currentIndex,
+            current_question_index: currentIndex, // Save progress immediately
           })
           .eq("id", studentId);
       } catch (err: unknown) {
@@ -374,6 +395,7 @@ export default function ActiveExamPage() {
     currentIndex,
   ]);
 
+  // Detention Timer
   useEffect(() => {
     if (!isDetention || !detentionEndTime) return;
 
@@ -399,6 +421,7 @@ export default function ActiveExamPage() {
     return () => clearInterval(timer);
   }, [isDetention, detentionEndTime, studentId]);
 
+  // Math Penalty Logic
   const handleMathSubmit = async () => {
     if (parseInt(mathInput) === problem.answer) {
       const currentEnd = new Date(detentionEndTime || Date.now()).getTime();
@@ -415,6 +438,7 @@ export default function ActiveExamPage() {
     }
   };
 
+  // 🟢 4. NEXT QUESTION & SCORING LOGIC 🟢
   const handleNextQuestion = async () => {
     if (!selectedOption) {
       setErrorMsg("⚠️ YOU MUST SELECT AN ANSWER!");
@@ -429,6 +453,7 @@ export default function ActiveExamPage() {
       const isLastQuestion = currentIndex === questions.length - 1;
       const currentQ = questions[currentIndex];
 
+      // Local Check: Did we already click next?
       if (answeredQuestions.has(currentQ.id)) {
         if (!isLastQuestion) {
           setCurrentIndex(currentIndex + 1);
@@ -445,13 +470,13 @@ export default function ActiveExamPage() {
       );
       const studentLetter =
         optionIndex !== -1 ? String.fromCharCode(65 + optionIndex) : "UNKNOWN";
-
       const dbCorrectLetter = (currentQ.answer || "NOT SET")
         .trim()
         .toUpperCase();
       const isCorrect = studentLetter === dbCorrectLetter;
 
-      // 🟢 FIX: Ask the DB if the answer exists BEFORE we give them a point! 🟢
+      // 🟢 DATABASE CHECK: Did we already answer this in the DB?
+      // This is the "Refresh Inflation" protection.
       const { data: existingAnswer } = await supabase
         .from("student_answers")
         .select("id")
@@ -462,7 +487,7 @@ export default function ActiveExamPage() {
       let newScore = score;
 
       if (!existingAnswer) {
-        // ONLY give points if this is a brand new, unique answer!
+        // Only increment score if it's a NEW answer
         if (isCorrect) {
           newScore += 1;
           setScore(newScore);
@@ -483,7 +508,7 @@ export default function ActiveExamPage() {
         if (!insertError)
           setAnsweredQuestions((prev) => new Set(prev).add(currentQ.id));
       } else {
-        // It's a duplicate! Just mark it as answered locally to prevent future checks.
+        // If it exists, sync local state just in case
         setAnsweredQuestions((prev) => new Set(prev).add(currentQ.id));
       }
 
@@ -491,13 +516,14 @@ export default function ActiveExamPage() {
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
         setSelectedOption("");
-        // Saves the verified score
+        // Save Progress
         await supabase
           .from("students")
           .update({ current_question_index: nextIndex, score: newScore })
           .eq("id", studentId);
       } else {
         setIsFinished(true);
+        // Final Save
         await supabase
           .from("students")
           .update({
@@ -522,6 +548,7 @@ export default function ActiveExamPage() {
     );
   }
 
+  // WAITING ROOM UI
   if (examStatus === "waiting") {
     return (
       <div
@@ -546,6 +573,7 @@ export default function ActiveExamPage() {
     );
   }
 
+  // TIME'S UP UI
   if (isTimedOut) {
     return (
       <div
@@ -580,6 +608,7 @@ export default function ActiveExamPage() {
     );
   }
 
+  // FINISHED UI
   if (isFinished) {
     return (
       <div
@@ -614,6 +643,7 @@ export default function ActiveExamPage() {
     );
   }
 
+  // DETENTION UI
   if (isDetention) {
     return (
       <div
@@ -658,6 +688,7 @@ export default function ActiveExamPage() {
     );
   }
 
+  // ACTIVE EXAM UI
   const currentQuestion = questions[currentIndex];
   const progressPercent =
     questions.length > 0 ? (currentIndex / questions.length) * 100 : 0;

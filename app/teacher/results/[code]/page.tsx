@@ -19,8 +19,8 @@ interface Student {
   id: string;
   name: string;
   status: string;
-  score: number | null;
-  correct_answers: number | null;
+  score: number | null; // This is the Percentage (e.g., 68)
+  correct_answers: number | null; // This is the Count (e.g., 17)
   total_questions: number | null;
   created_at: string;
 }
@@ -109,22 +109,18 @@ export default function TeacherResultsPage() {
 
   const finishedStudents = students.filter((s) => s.status === "finished");
 
-  const studentPercentages = finishedStudents.map((s) => {
-    const correct = s.score || 0;
-    return Math.round((correct / totalQuestions) * 100);
-  });
+  // 🟢 FIXED: Use 'correct_answers' for raw counts, 'score' for percentages
+  const correctCounts = finishedStudents.map((s) => s.correct_answers || 0);
+  const scores = finishedStudents.map((s) => s.score || 0);
 
   const avgScore =
-    studentPercentages.length > 0
-      ? Math.round(
-          studentPercentages.reduce((sum, score) => sum + score, 0) /
-            studentPercentages.length,
-        )
+    scores.length > 0
+      ? Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length)
       : 0;
 
-  const highestScore =
-    studentPercentages.length > 0 ? Math.max(...studentPercentages) : 0;
+  const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
 
+  // 🟢 FIXED: CSV Export now uses correct columns
   const exportToCSV = () => {
     const headers = [
       "Name",
@@ -135,8 +131,8 @@ export default function TeacherResultsPage() {
       "Date",
     ];
     const rows = students.map((s) => {
-      const correct = s.score || 0;
-      const percentage = Math.round((correct / totalQuestions) * 100);
+      const correct = s.correct_answers || 0; // Use specific column
+      const percentage = s.score || 0; // Use specific column
 
       return [
         s.name,
@@ -170,10 +166,9 @@ export default function TeacherResultsPage() {
 
   // 🟢 STUDENT DETAIL VIEW 🟢
   if (viewingAnswers && selectedStudent) {
-    const studentCorrectCount = selectedStudent.score || 0;
-    const studentPercentage = Math.round(
-      (studentCorrectCount / totalQuestions) * 100,
-    );
+    // 🟢 FIXED: Use correct_answers from DB
+    const studentCorrectCount = selectedStudent.correct_answers || 0;
+    const studentPercentage = selectedStudent.score || 0;
 
     return (
       <div
@@ -392,10 +387,9 @@ export default function TeacherResultsPage() {
                 )}
                 {students.map((student) => {
                   const isFinished = student.status === "finished";
-                  const correctCount = student.score || 0;
-                  const percentage = Math.round(
-                    (correctCount / totalQuestions) * 100,
-                  );
+                  // 🟢 FIXED: Use correct database columns
+                  const correctCount = student.correct_answers || 0;
+                  const percentage = student.score || 0;
 
                   let scoreColor = "bg-[#FF6B9E]";
                   if (percentage >= 80) scoreColor = "bg-[#00E57A]";
@@ -410,7 +404,7 @@ export default function TeacherResultsPage() {
                         {student.name}
                       </td>
 
-                      {/* 🟢 Percentage Column */}
+                      {/* 🟢 Percentage Column (Uses 'score' from DB) */}
                       <td className="text-black p-4">
                         {isFinished ? (
                           <span
@@ -425,7 +419,7 @@ export default function TeacherResultsPage() {
                         )}
                       </td>
 
-                      {/* 🟢 Correct Answers Column */}
+                      {/* 🟢 Correct Answers Column (Uses 'correct_answers' from DB) */}
                       <td className="text-black p-4">
                         {isFinished ? (
                           <span className="bg-white px-3 py-1 border-4 border-black font-black text-xl shadow-[2px_2px_0px_0px_#000] inline-block whitespace-nowrap">

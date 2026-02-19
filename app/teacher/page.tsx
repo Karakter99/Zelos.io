@@ -202,8 +202,8 @@ export default function TeacherDashboard() {
             Students
           </Link>
           <Link
-            href="#"
-            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 pointer-events-none"
+            href="/teacher/settings"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform"
           >
             Settings
           </Link>

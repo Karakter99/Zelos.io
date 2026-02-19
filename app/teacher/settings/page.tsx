@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link"; // 🟢 Added Link import for the sidebar
 import { supabase } from "../../utils/Supabase/client";
 import Navbar from "../../components/Navbar";
 import {
@@ -45,7 +46,6 @@ export default function TeacherSettingsPage() {
         setFullName(user.user_metadata?.full_name || "");
         setSchoolName(user.user_metadata?.school_name || "");
 
-        // Optional: If you also keep a 'teachers' table, you can fetch from there
         const { data: teacherData } = await supabase
           .from("teachers")
           .select("full_name, school_name")
@@ -74,7 +74,6 @@ export default function TeacherSettingsPage() {
     setMessage(null);
 
     try {
-      // Update Supabase Auth Metadata
       const { error: authError } = await supabase.auth.updateUser({
         data: {
           full_name: fullName,
@@ -84,7 +83,6 @@ export default function TeacherSettingsPage() {
 
       if (authError) throw authError;
 
-      // Update Public 'teachers' table (if it exists)
       const { error: dbError } = await supabase
         .from("teachers")
         .update({
@@ -94,7 +92,6 @@ export default function TeacherSettingsPage() {
         .eq("id", teacherId);
 
       if (dbError && dbError.code !== "PGRST116") {
-        // Ignore "Row not found" if you don't use a teachers table, otherwise throw
         console.warn("Could not update public table, might not exist yet.");
       }
 
@@ -115,7 +112,6 @@ export default function TeacherSettingsPage() {
       "🛑 WARNING: This will permanently delete your account, all your exams, and student data. This cannot be undone. Type 'DELETE' to confirm?",
     );
 
-    // Simple extra prompt for safety
     if (!confirmDelete) return;
     const finalCheck = window.prompt("Type DELETE to confirm account removal:");
     if (finalCheck !== "DELETE") {
@@ -126,12 +122,9 @@ export default function TeacherSettingsPage() {
     setDeleting(true);
 
     try {
-      // 🟢 Call the Secure SQL Function we created
       const { error } = await supabase.rpc("delete_current_user");
-
       if (error) throw error;
 
-      // Sign out and redirect to home
       await supabase.auth.signOut();
       router.push("/");
     } catch (err: unknown) {
@@ -152,20 +145,54 @@ export default function TeacherSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f8f8] flex flex-col font-sans selection:bg-[#25c0f4] selection:text-black">
+    <div
+      className="min-h-screen flex flex-col font-sans selection:bg-black selection:text-[#facc15] bg-[#FFE600]"
+      style={{
+        backgroundImage: "radial-gradient(circle, #000 2px, transparent 2px)",
+        backgroundSize: "32px 32px",
+        backgroundAttachment: "fixed",
+      }}
+    >
       <Navbar />
 
-      <main
-        className="flex-1 p-6 md:p-10 bg-[#FFE600] flex justify-center items-start"
-        style={{
-          backgroundImage: "radial-gradient(#000 1px, transparent 1px)",
-          backgroundSize: "30px 30px",
-        }}
-      >
-        <div className="max-w-3xl w-full space-y-8 animate-in slide-in-from-bottom-8 duration-500">
+      <main className="flex-grow flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-12 relative z-10 max-w-[1600px] mx-auto w-full">
+        {/* Decorative Lines */}
+        <div className="absolute top-0 bottom-0 left-[340px] w-2 bg-black hidden md:block z-0 -ml-4" />
+        <div className="absolute top-[200px] left-[340px] right-0 h-2 bg-black hidden md:block z-0" />
+
+        {/* 1. LEFT SIDEBAR */}
+        <nav className="w-full md:w-72 bg-[#00E57A] border-[6px] border-black shadow-[16px_16px_0px_0px_#000] p-8 md:p-10 flex flex-col gap-8 h-fit z-10 shrink-0">
+          <Link
+            href="/teacher"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform"
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="#"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 pointer-events-none"
+          >
+            Exams
+          </Link>
+          <Link
+            href="#"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 pointer-events-none"
+          >
+            Students
+          </Link>
+          <Link
+            href="/teacher/settings"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform"
+          >
+            Settings
+          </Link>
+        </nav>
+
+        {/* 2. RIGHT CONTENT AREA (Settings Forms) */}
+        <div className="flex-1 flex flex-col gap-8 z-10 w-full animate-in slide-in-from-bottom-8 duration-500 max-w-4xl">
           {/* Header */}
           <div>
-            <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-none text-black">
+            <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-none text-black bg-white inline-block border-[6px] border-black p-4 md:p-6 shadow-[12px_12px_0px_0px_#000]">
               Account <br /> Settings
             </h1>
           </div>
@@ -173,7 +200,7 @@ export default function TeacherSettingsPage() {
           {/* Success / Error Message */}
           {message && (
             <div
-              className={`p-4 border-[4px] border-black shadow-[6px_6px_0px_0px_#000] font-black uppercase text-xl flex items-center gap-3 ${message.type === "success" ? "bg-[#00E57A] text-black" : "bg-[#FF6B9E] text-black"}`}
+              className={`p-4 border-[6px] border-black shadow-[8px_8px_0px_0px_#000] font-black uppercase text-xl flex items-center gap-3 ${message.type === "success" ? "bg-[#00E57A] text-black" : "bg-[#FF6B9E] text-black"}`}
             >
               {message.type === "success" ? (
                 <Save className="w-8 h-8" />
@@ -235,7 +262,7 @@ export default function TeacherSettingsPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="mt-4 w-full bg-[#25c0f4] text-black font-black text-2xl uppercase py-5 border-[4px] border-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none"
+                className="mt-4 w-full bg-[#25c0f4] text-black font-black text-2xl uppercase py-5 border-[4px] border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none"
               >
                 {saving ? (
                   <Loader2 className="w-8 h-8 animate-spin" />
@@ -248,7 +275,7 @@ export default function TeacherSettingsPage() {
           </div>
 
           {/* Danger Zone */}
-          <div className="bg-[#FF6B9E] border-[6px] border-black p-8 md:p-10 shadow-[12px_12px_0px_0px_#000] mt-12">
+          <div className="bg-[#FF6B9E] border-[6px] border-black p-8 md:p-10 shadow-[12px_12px_0px_0px_#000] mt-4">
             <h2 className="text-3xl font-black uppercase tracking-tighter mb-4 flex items-center gap-3 text-black">
               <AlertTriangle className="w-8 h-8 stroke-[3]" /> Danger Zone
             </h2>
@@ -260,7 +287,7 @@ export default function TeacherSettingsPage() {
             <button
               onClick={handleDeleteAccount}
               disabled={deleting}
-              className="bg-black text-[#FF6B9E] w-full font-black text-xl uppercase py-5 border-[4px] border-black shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70"
+              className="bg-black text-[#FF6B9E] w-full font-black text-xl uppercase py-5 border-[4px] border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70"
             >
               {deleting ? (
                 <Loader2 className="w-8 h-8 animate-spin" />

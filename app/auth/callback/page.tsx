@@ -19,8 +19,6 @@ export default function AuthCallbackPage() {
     const errorCode = params.get("error_code");
 
     if (errorDescription || errorCode) {
-      // 🟢 FIX: Wrap in setTimeout to stop the "Synchronous State" error
-      // This forces the update to happen AFTER the initial paint.
       setTimeout(() => {
         setError(
           errorDescription?.replace(/\+/g, " ") || "Link expired or invalid",
@@ -29,11 +27,18 @@ export default function AuthCallbackPage() {
       return;
     }
 
-    // 3. Listen for the "Auto-Login" event
+    // 🟢 3. NEW: Check if Supabase ALREADY logged them in while the page was rendering
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.push("/teacher"); // Or "/teacher/dashboard" depending on your setup
+      }
+    });
+
+    // 4. Listen for the "Auto-Login" event (if it takes a second)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" || session) {
         router.push("/teacher");
       }
     });

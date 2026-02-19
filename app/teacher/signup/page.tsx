@@ -50,7 +50,6 @@ export default function TeacherSignUp() {
     }
     return true;
   };
-
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -60,6 +59,9 @@ export default function TeacherSignUp() {
     setLoading(true);
 
     try {
+      // 🟢 ADD THIS LINE: Clear any "ghost" sessions before creating a new one
+      await supabase.auth.signOut();
+
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
@@ -67,9 +69,8 @@ export default function TeacherSignUp() {
           data: {
             full_name: fullName.trim(),
             school_name: schoolName.trim() || null,
-            role: "teacher", // Ensure role is saved
+            role: "teacher",
           },
-          // 🟢 CRITICAL: Send them to the callback route to handle the login token
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });

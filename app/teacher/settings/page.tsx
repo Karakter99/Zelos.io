@@ -164,15 +164,15 @@ export default function TeacherSettingsPage() {
         <nav className="w-full md:w-72 bg-[#00E57A] border-[6px] border-black shadow-[16px_16px_0px_0px_#000] p-8 md:p-10 flex flex-col gap-8 h-fit z-10 shrink-0">
           <Link
             href="/teacher"
-            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
           >
             Dashboard
           </Link>
           <Link
-            href="#"
-            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 pointer-events-none"
+            href="/teacher/new"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
           >
-            Exams
+            Exam
           </Link>
           <Link
             href="#"
@@ -182,12 +182,11 @@ export default function TeacherSettingsPage() {
           </Link>
           <Link
             href="/teacher/settings"
-            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
           >
             Settings
           </Link>
         </nav>
-
         {/* 2. RIGHT CONTENT AREA (Settings Forms) */}
         <div className="flex-1 flex flex-col gap-8 z-10 w-full animate-in slide-in-from-bottom-8 duration-500 max-w-4xl">
           {/* Header */}

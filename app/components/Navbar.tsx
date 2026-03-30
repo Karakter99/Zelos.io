@@ -58,13 +58,13 @@ export default function Navbar() {
       {/* 2. CENTER LINKS (Hidden on mobile) */}
       <div className="hidden md:flex items-center gap-8 bg-[#e4edcf] text-[#8c470a] border-4 border-black px-8 py-3 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-black text-sm hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 transition-all">
         <Link
-          href="#"
+          href="/how-it-works"
           className="hover:underline decoration-4 underline-offset-4 decoration-[#FF6B9E]"
         >
           How it works
         </Link>
         <Link
-          href="#"
+          href="/features"
           className="hover:underline decoration-4 underline-offset-4 decoration-[#00E57A]"
         >
           Features

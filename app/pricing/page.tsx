@@ -1,361 +1,150 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../utils/Supabase/client";
 import Navbar from "../components/Navbar";
-import { CheckCircle2, Share2, Mail, Globe } from "lucide-react";
+import Footer from "../components/Footer";
+import { Check, Zap, Rocket, Star, ArrowRight } from "lucide-react";
 
 export default function PricingPage() {
-  const [isAnnual, setIsAnnual] = useState(false);
+  const router = useRouter();
+  const [loading, setLoading] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+    };
+    checkUser();
+  }, []);
+
+  const handleStripeRedirect = async (priceId: string, planName: string) => {
+    setLoading(planName);
+
+    // 1. Get the current logged-in teacher
+    if (!user) {
+      alert("Please login to continue with the payment.");
+      router.push("/teacher/login");
+      return;
+    }
+
+    try {
+      // 2. Call your internal API to create a Stripe session
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId: priceId, // From Stripe Dashboard
+          userId: user.id,
+          userEmail: user.email,
+        }),
+      });
+
+      const { url, error } = await response.json();
+      
+      if (error) throw new Error(error);
+
+      // 3. Redirect user to the Stripe-hosted checkout page
+      window.location.href = url;
+    } catch (err) {
+      console.error("Checkout error:", err);
+      alert("Could not start payment. Please try again.");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const plans = [
+    {
+      name: "Free Trial",
+      price: "0",
+      description: "Test the platform for free",
+      features: ["1 Full Exam Session", "Standard Support", "Basic Analytics"],
+      priceId: null,
+      buttonText: "Start Free",
+      icon: <Star className="w-8 h-8" />,
+      color: "bg-white",
+    },
+    {
+      name: "Single Strike",
+      price: "1",
+      description: "Perfect for a single assessment",
+      features: ["1 Full Exam Session", "Priority Support", "Detailed Analytics"],
+      priceId: "price_SINGLE_EXAM_ID", // Replace with your Stripe Price ID
+      buttonText: "Buy 1 Credit",
+      icon: <Zap className="w-8 h-8" />,
+      color: "bg-[#25c0f4]",
+    },
+    {
+      name: "Power Pack",
+      price: "8",
+      description: "Best value for active teachers",
+      features: ["5 Full Exam Sessions", "Priority Support", "Detailed Analytics", "Custom Templates"],
+      priceId: "price_FIVE_EXAMS_ID", // Replace with your Stripe Price ID
+      buttonText: "Buy 5 Credits",
+      icon: <Rocket className="w-8 h-8" />,
+      color: "bg-[#FFE600]",
+    },
+  ];
 
   return (
-    <div
-      className="min-h-screen w-full flex flex-col font-sans selection:bg-black selection:text-[#fbbf24] bg-[#fbbf24]"
+    <div 
+      className="min-h-screen bg-[#FFE600] relative flex flex-col font-sans selection:bg-black selection:text-[#FFE600]"
       style={{
-        backgroundImage: "radial-gradient(#000000 2px, transparent 2px)",
-        backgroundSize: "24px 24px",
-        backgroundAttachment: "fixed",
+        backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+        backgroundSize: "32px 32px",
       }}
     >
       <Navbar />
 
-      {/* --- Main Content --- */}
-      <main className="flex-grow flex flex-col items-center px-4 py-16 md:py-24 relative z-10">
-        {/* Hero Title */}
-        <div className="max-w-4xl text-center mb-16">
-          <h2 className="text-5xl md:text-7xl lg:text-8xl font-black text-black uppercase leading-none tracking-tighter mb-6 bg-white border-4 border-black p-6 shadow-[8px_8px_0px_0px_#000] inline-block">
-            Simple Pricing
-          </h2>
-          <div className="mt-4">
-            <p className="text-xl md:text-2xl font-bold bg-[#25c0f4] border-4 border-black inline-block px-4 py-2 shadow-[4px_4px_0px_0px_#000] uppercase text-black">
-              For High-Stakes Exams
-            </p>
-          </div>
+      <main className="flex-1 py-20 px-6 relative z-10">
+        <div className="max-w-6xl mx-auto text-center mb-16">
+          <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none text-black mb-6">
+            Pick Your <br /> <span className="bg-black text-white px-4">Power.</span>
+          </h1>
+          <p className="text-xl font-bold uppercase text-black/70 italic">No Subscriptions. Just Flow.</p>
         </div>
 
-        {/* Billing Toggle */}
-        <div className="flex items-center gap-6 mb-16 bg-white border-4 border-black p-4 shadow-[4px_4px_0px_0px_#000]">
-          <span
-            className={`text-xl font-black uppercase transition-colors ${!isAnnual ? "text-black" : "text-gray-400"}`}
-          >
-            Monthly
-          </span>
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+          {plans.map((plan) => (
+            <div key={plan.name} className={`flex flex-col border-8 border-black text-black p-8 shadow-[12px_12px_0px_0px_#000] ${plan.color}`}>
+              <div className="mb-6 flex justify-between items-start">
+                <div className="p-3 bg-black text-white border-4 border-black">
+                  {plan.icon}
+                </div>
+                <div className="text-right">
+                  <p className="text-5xl font-black uppercase">€{plan.price}</p>
+                </div>
+              </div>
 
-          {/* Custom Toggle Switch */}
-          <div
-            className="relative inline-block w-16 h-8 align-middle select-none transition duration-200 ease-in cursor-pointer"
-            onClick={() => setIsAnnual(!isAnnual)}
-          >
-            <div
-              className={`absolute block w-8 h-8 rounded-full bg-white border-4 border-black appearance-none transition-all duration-200 ease-in-out z-10 ${isAnnual ? "right-0" : "right-8"}`}
-            />
-            <div className="block overflow-hidden h-8 rounded-full bg-black border-4 border-black" />
-          </div>
+              <h3 className="text-3xl font-black uppercase tracking-tighter mb-2">{plan.name}</h3>
+              <p className="font-bold text-sm uppercase mb-8">{plan.description}</p>
 
-          <span
-            className={`text-xl font-black uppercase flex items-center gap-2 transition-colors ${isAnnual ? "text-black" : "text-gray-400"}`}
-          >
-            Annual{" "}
-            <span className="bg-[#25c0f4] text-black text-xs px-2 py-1 border-4 border-black shadow-none ml-2">
-              Save 20%
-            </span>
-          </span>
-        </div>
+              <ul className="space-y-4 mb-10 flex-1">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex items-center gap-3 font-bold uppercase text-sm">
+                    <Check className="w-5 h-5 stroke-[4] shrink-0" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
 
-        {/* Pricing Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 w-full max-w-7xl px-4">
-          {/* Free Plan */}
-          <div className="bg-white border-4 border-black p-8 flex flex-col shadow-[8px_8px_0px_0px_#000] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_#000] transition-all duration-200">
-            <div className="mb-8">
-              <h3 className="text-4xl font-black uppercase mb-2 text-black">
-                Free
-              </h3>
-              <div className="flex items-baseline gap-1 text-black">
-                <span className="text-6xl font-black">$0</span>
-                <span className="text-xl font-bold uppercase">/mo</span>
-              </div>
+              <button
+                onClick={() => plan.priceId ? handleStripeRedirect(plan.priceId, plan.name) : router.push("/teacher/signup")}
+                disabled={loading === plan.name}
+                className="w-full bg-black text-white p-5 text-xl font-black uppercase flex items-center justify-center gap-3 hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.3)] transition-all disabled:opacity-50"
+              >
+                {loading === plan.name ? "Redirecting..." : plan.buttonText}
+                <ArrowRight className="w-6 h-6" />
+              </button>
             </div>
-            <button className="w-full bg-white border-4 border-black py-4 px-6 text-xl font-black uppercase shadow-[4px_4px_0px_0px_#000] mb-10 hover:bg-black hover:text-white active:translate-y-1 active:translate-x-1 active:shadow-none transition-all text-black">
-              Select Free
-            </button>
-            <div className="space-y-6 flex-grow">
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-black shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  5 Exams per month
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-black shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Basic analytics
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-black shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Community support
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Pro Plan (Scaled up) */}
-          <div className="bg-white border-4 border-black p-8 flex flex-col shadow-[8px_8px_0px_0px_#000] relative md:scale-110 z-10 hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_#000] transition-all duration-200">
-            <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#25c0f4] border-4 border-black px-6 py-2 shadow-[4px_4px_0px_0px_#000]">
-              <span className="text-xl font-black uppercase whitespace-nowrap text-black">
-                Most Popular
-              </span>
-            </div>
-            <div className="mb-8 mt-4 text-black">
-              <h3 className="text-4xl font-black uppercase mb-2">Pro</h3>
-              <div className="flex items-baseline gap-1">
-                <span className="text-6xl font-black">
-                  ${isAnnual ? "23" : "29"}
-                </span>
-                <span className="text-xl font-bold uppercase">/mo</span>
-              </div>
-            </div>
-            <button className="w-full bg-[#25c0f4] border-4 border-black py-4 px-6 text-xl font-black uppercase shadow-[4px_4px_0px_0px_#000] mb-10 hover:bg-black hover:text-white active:translate-y-1 active:translate-x-1 active:shadow-none transition-all text-black">
-              Get Started
-            </button>
-            <div className="space-y-6 flex-grow">
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-[#25c0f4] shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Unlimited Exams
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-[#25c0f4] shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  AI Proctoring
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-[#25c0f4] shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Custom branding
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-black">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-[#25c0f4] shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Priority support
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Enterprise Plan */}
-          <div className="bg-black border-4 border-black p-8 flex flex-col shadow-[8px_8px_0px_0px_#000] text-white hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_#000] transition-all duration-200">
-            <div className="mb-8">
-              <h3 className="text-4xl font-black uppercase mb-2 text-white">
-                Enterprise
-              </h3>
-              <div className="flex items-baseline gap-1">
-                <span className="text-5xl font-black text-[#25c0f4]">
-                  Custom
-                </span>
-              </div>
-            </div>
-            <button className="w-full bg-white text-black border-4 border-white py-4 px-6 text-xl font-black uppercase shadow-[8px_8px_0px_0px_#25c0f4] mb-10 hover:bg-[#25c0f4] active:translate-y-1 active:translate-x-1 active:shadow-none transition-all">
-              Contact Us
-            </button>
-            <div className="space-y-6 flex-grow">
-              <div className="flex items-start gap-4 text-white">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-white shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Custom integrations
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-white">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-white shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Guaranteed SLA
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-white">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-white shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  Dedicated Manager
-                </span>
-              </div>
-              <div className="flex items-start gap-4 text-white">
-                <CheckCircle2
-                  className="w-8 h-8 font-bold text-white shrink-0"
-                  strokeWidth={3}
-                />
-                <span className="text-lg font-bold uppercase mt-1">
-                  White-labeling
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* FAQ Hint */}
-        <div className="mt-24 text-center">
-          <div className="bg-white border-4 border-black p-8 shadow-[8px_8px_0px_0px_#000] max-w-2xl mx-auto">
-            <h4 className="text-3xl font-black uppercase mb-4 text-black">
-              Need a custom quote?
-            </h4>
-            <p className="text-xl font-bold mb-6 text-black">
-              Our team of experts is ready to help you scale your testing
-              platform.
-            </p>
-            <a
-              className="text-2xl font-black uppercase text-black underline decoration-8 underline-offset-8 hover:bg-[#25c0f4] transition-colors px-2"
-              href="#"
-            >
-              Talk to sales →
-            </a>
-          </div>
+          ))}
         </div>
       </main>
 
-      {/* --- Massive Dark Footer --- */}
-      <footer className="w-full bg-black text-white px-6 py-12 border-t-8 border-black z-10">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-[#25c0f4] border-4 border-white shadow-[4px_4px_0px_0px_#ffffff]">
-                <Globe className="text-black w-8 h-8 stroke-[3]" />
-              </div>
-              <h2 className="text-4xl font-black uppercase tracking-tighter text-white">
-                ExamFlow
-              </h2>
-            </div>
-            <p className="text-xl font-bold max-w-sm mb-6 uppercase text-gray-300">
-              Modern exam administration for the bold generation.
-            </p>
-            <div className="flex gap-4">
-              <div className="w-12 h-12 bg-white border-4 border-white flex items-center justify-center cursor-pointer hover:bg-[#25c0f4] hover:border-black hover:text-black transition-colors text-black">
-                <Share2 className="w-6 h-6 stroke-[3]" />
-              </div>
-              <div className="w-12 h-12 bg-white border-4 border-white flex items-center justify-center cursor-pointer hover:bg-[#25c0f4] hover:border-black hover:text-black transition-colors text-black">
-                <Mail className="w-6 h-6 stroke-[3]" />
-              </div>
-              <div className="w-12 h-12 bg-white border-4 border-white flex items-center justify-center cursor-pointer hover:bg-[#25c0f4] hover:border-black hover:text-black transition-colors text-black">
-                <Globe className="w-6 h-6 stroke-[3]" />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h5 className="text-xl font-black uppercase mb-6 text-[#25c0f4]">
-              Links
-            </h5>
-            <ul className="space-y-4 font-bold uppercase text-gray-300">
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  Features
-                </a>
-              </li>
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  Testimonials
-                </a>
-              </li>
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  API Docs
-                </a>
-              </li>
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  Privacy
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h5 className="text-xl font-black uppercase mb-6 text-[#25c0f4]">
-              Company
-            </h5>
-            <ul className="space-y-4 font-bold uppercase text-gray-300">
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  About Us
-                </a>
-              </li>
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  Careers
-                </a>
-              </li>
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  Blog
-                </a>
-              </li>
-              <li>
-                <a
-                  className="hover:underline decoration-2 hover:text-white"
-                  href="#"
-                >
-                  Contact
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto mt-12 pt-12 border-t-4 border-white/20 text-center uppercase font-black tracking-widest text-gray-400">
-          © 2026 ExamFlow — No boundaries. Just flow.
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

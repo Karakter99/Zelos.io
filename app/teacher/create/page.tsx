@@ -259,7 +259,7 @@ export default function CreateExamPage() {
             {/* 🟢 Title and Time Limit Inputs */}
             <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
               {/* Exam Title Input */}
-              <div className="flex flex-col gap-2 flex-grow">
+              <div className="flex flex-col gap-2 grow">
                 <label className="text-sm font-black uppercase tracking-widest text-black">
                   Exam Title
                 </label>
@@ -319,9 +319,9 @@ export default function CreateExamPage() {
 
               <div className="size-32 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] flex items-center justify-center mb-8 rotate-3 group-hover:rotate-0 transition-transform">
                 {questions.length > 0 ? (
-                  <Check className="w-16 h-16 text-black stroke-[3]" />
+                  <Check className="w-16 h-16 text-black stroke-3" />
                 ) : (
-                  <UploadCloud className="w-16 h-16 text-black stroke-[3]" />
+                  <UploadCloud className="w-16 h-16 text-black stroke-3" />
                 )}
               </div>
 
@@ -444,7 +444,7 @@ export default function CreateExamPage() {
             disabled={loading}
             className="flex-1 md:flex-none px-10 py-4 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase flex items-center justify-center gap-3 disabled:opacity-50"
           >
-            <Send className="w-6 h-6 stroke-[3]" />
+            <Send className="w-6 h-6 stroke-3" />
             {loading ? "SAVING..." : "Save & Publish"}
           </button>
         </div>

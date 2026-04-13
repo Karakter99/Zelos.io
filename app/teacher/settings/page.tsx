@@ -155,10 +155,10 @@ export default function TeacherSettingsPage() {
     >
       <Navbar />
 
-      <main className="flex-grow flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-12 relative z-10 max-w-[1600px] mx-auto w-full">
+      <main className="grow flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-12 relative z-10 max-w-400 mx-auto w-full">
         {/* Decorative Lines */}
-        <div className="absolute top-0 bottom-0 left-[340px] w-2 bg-black hidden md:block z-0 -ml-4" />
-        <div className="absolute top-[200px] left-[340px] right-0 h-2 bg-black hidden md:block z-0" />
+        <div className="absolute top-0 bottom-0 left-85 w-2 bg-black hidden md:block z-0 -ml-4" />
+        <div className="absolute top-50 left-85 right-0 h-2 bg-black hidden md:block z-0" />
 
         {/* 1. LEFT SIDEBAR */}
         <nav className="w-full md:w-72 bg-[#00E57A] border-[6px] border-black shadow-[16px_16px_0px_0px_#000] p-8 md:p-10 flex flex-col gap-8 h-fit z-10 shrink-0">
@@ -213,7 +213,7 @@ export default function TeacherSettingsPage() {
           {/* Profile Update Form */}
           <div className="bg-white border-[6px] border-black p-8 md:p-10 shadow-[12px_12px_0px_0px_#000]">
             <h2 className="text-3xl font-black uppercase tracking-tighter mb-6 flex items-center gap-3 border-b-4 border-black pb-4">
-              <User className="w-8 h-8 stroke-[3]" /> Edit Profile
+              <User className="w-8 h-8 stroke-3" /> Edit Profile
             </h2>
 
             <form onSubmit={handleUpdateProfile} className="space-y-6">
@@ -261,12 +261,12 @@ export default function TeacherSettingsPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="mt-4 w-full bg-[#25c0f4] text-black font-black text-2xl uppercase py-5 border-[4px] border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none"
+                className="mt-4 w-full bg-[#25c0f4] text-black font-black text-2xl uppercase py-5 border-4 border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none"
               >
                 {saving ? (
                   <Loader2 className="w-8 h-8 animate-spin" />
                 ) : (
-                  <Save className="w-8 h-8 stroke-[3]" />
+                  <Save className="w-8 h-8 stroke-3" />
                 )}
                 {saving ? "SAVING..." : "Save Changes"}
               </button>
@@ -276,7 +276,7 @@ export default function TeacherSettingsPage() {
           {/* Danger Zone */}
           <div className="bg-[#FF6B9E] border-[6px] border-black p-8 md:p-10 shadow-[12px_12px_0px_0px_#000] mt-4">
             <h2 className="text-3xl font-black uppercase tracking-tighter mb-4 flex items-center gap-3 text-black">
-              <AlertTriangle className="w-8 h-8 stroke-[3]" /> Danger Zone
+              <AlertTriangle className="w-8 h-8 stroke-3" /> Danger Zone
             </h2>
             <p className="font-bold text-black mb-6 text-lg">
               Once you delete your account, there is no going back. All of your
@@ -286,12 +286,12 @@ export default function TeacherSettingsPage() {
             <button
               onClick={handleDeleteAccount}
               disabled={deleting}
-              className="bg-black text-[#FF6B9E] w-full font-black text-xl uppercase py-5 border-[4px] border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70"
+              className="bg-black text-[#FF6B9E] w-full font-black text-xl uppercase py-5 border-4 border-black shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 disabled:opacity-70"
             >
               {deleting ? (
                 <Loader2 className="w-8 h-8 animate-spin" />
               ) : (
-                <Trash2 className="w-8 h-8 stroke-[3]" />
+                <Trash2 className="w-8 h-8 stroke-3" />
               )}
               {deleting ? "DELETING..." : "Delete Account"}
             </button>

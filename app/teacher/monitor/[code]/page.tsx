@@ -47,6 +47,11 @@ export default function LiveCheatMonitor() {
   const [totalQuestions, setTotalQuestions] = useState(1);
   const [loading, setLoading] = useState(true);
 
+  const [confirmModal, setConfirmModal] = useState<{
+  message: string;
+  onConfirm: () => void;
+} | null>(null);
+
   useEffect(() => {
     if (!examCode) return;
 
@@ -94,27 +99,24 @@ export default function LiveCheatMonitor() {
   }, [examCode]);
 
   // --- 🟢 MASTER SWITCH FUNCTION 🟢 ---
-  const handleStartExam = async () => {
-    if (
-      !window.confirm(
-        "Are you sure? This will instantly start the timer for all students!",
-      )
-    )
-      return;
-
-    try {
-      const now = new Date().toISOString();
-      await supabase
-        .from("exams")
-        .update({ status: "live", started_at: now })
-        .eq("id", exam?.id);
-
-      setExamStatus("live");
-    } catch (err: unknown) {
-      console.error("Error starting exam:", err);
-      alert("Failed to start exam.");
-    }
-  };
+const handleStartExam = async () => {
+  setConfirmModal({
+    message: "Are you sure? This will instantly start the timer for all students!",
+    onConfirm: async () => {
+      try {
+        const now = new Date().toISOString();
+        await supabase
+          .from("exams")
+          .update({ status: "live", started_at: now })
+          .eq("id", exam?.id);
+        setExamStatus("live");
+      } catch (err: unknown) {
+        console.error("Error starting exam:", err);
+        alert("Failed to start exam.");
+      }
+    },
+  });
+};
 
   const exportToExcel = () => {
     if (students.length === 0) return alert("No students to export yet!");
@@ -214,6 +216,33 @@ export default function LiveCheatMonitor() {
       }}
     >
       <Navbar />
+      {confirmModal && (
+  <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+    <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
+      <p className="text-xl font-black uppercase mb-8 text-[#FFE600] bg-black px-4 py-3">
+        {confirmModal.message}
+      </p>
+      <div className="flex gap-4">
+        <button
+          onClick={() => setConfirmModal(null)}
+          className="flex-1 bg-[#FF6B9E] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            confirmModal.onConfirm();
+            setConfirmModal(null);
+          }}
+          className="flex-1 bg-[#00E57A] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+        >
+          Yes, Start!
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       <main className="flex-grow flex flex-col p-6 md:p-12 relative z-10 max-w-[1600px] mx-auto w-full gap-8">
         <div className=" text-black bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">

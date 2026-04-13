@@ -31,6 +31,10 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmModal, setConfirmModal] = useState<{
+  message: string;
+  onConfirm: () => void;
+} | null>(null);
 
   useEffect(() => {
     const fetchExams = async () => {
@@ -74,22 +78,24 @@ export default function TeacherDashboard() {
       .toUpperCase();
   };
 
-  // 🗑️ Handle Exam Deletion
-  const handleDelete = async (e: React.MouseEvent, examId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!window.confirm("⚠️ WARNING: Delete this exam? Results will be lost."))
-      return;
-
-    try {
-      const { error } = await supabase.from("exams").delete().eq("id", examId);
-      if (error) throw error;
-      setExams((prev) => prev.filter((exam) => exam.id !== examId));
-    } catch (err) {
-      console.error("Delete Error:", err);
-      alert("Failed to delete exam.");
-    }
-  };
+const handleDelete = async (e: React.MouseEvent, examId: string) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  setConfirmModal({
+    message:  "⚠️ WARNING: Delete this exam? Results will be lost.",
+    onConfirm: async () => {
+      try {
+        const { error } = await supabase.from("exams").delete().eq("id", examId);
+        if (error) throw error;
+        setExams((prev) => prev.filter((exam) => exam.id !== examId));
+      } catch (err) {
+        console.error("Delete Error:", err);
+        alert("Failed to delete exam.");
+      }
+    },
+  });
+};
 
   // 📥 HANDLE DOWNLOAD
   const handleDownloadResults = async (
@@ -155,10 +161,35 @@ export default function TeacherDashboard() {
       }}
     >
       <Navbar />
-
-      <main className="flex-grow flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-12 relative z-10 max-w-[1600px] mx-auto w-full">
-        <div className="absolute top-0 bottom-0 left-[340px] w-2 bg-black hidden md:block z-0 -ml-4" />
-        <div className="absolute top-[200px] left-[340px] right-0 h-2 bg-black hidden md:block z-0" />
+      {confirmModal && (
+  <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+    <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
+      <p className="text-xl font-black uppercase mb-8 text-[#FFE600] bg-black px-4 py-3">
+        {confirmModal.message}
+      </p>
+      <div className="flex gap-4">
+        <button
+          onClick={() => setConfirmModal(null)}
+          className="flex-1 bg-[#00E57A] text-white border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            confirmModal.onConfirm();
+            setConfirmModal(null);
+          }}
+          className="flex-1 bg-[#FF6B9E] text-white border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+        >
+          Yes, Delete
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+      <main className="grow flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-12 relative z-10 max-w-400 mx-auto w-full">
+        <div className="absolute top-0 bottom-0 left-85 w-2 bg-black hidden md:block z-0 -ml-4" />
+        <div className="absolute top-50 left-85 right-0 h-2 bg-black hidden md:block z-0" />
 
         {/* 1. LEFT SIDEBAR */}
         <nav className="w-full md:w-72 bg-[#00E57A] border-[6px] border-black shadow-[16px_16px_0px_0px_#000] p-8 md:p-10 flex flex-col gap-8 h-fit z-10 shrink-0">
@@ -194,7 +225,7 @@ export default function TeacherDashboard() {
             href="/teacher/create"
             className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-6 md:p-8 text-center hover:translate-x-2 hover:translate-y-2 hover:shadow-[4px_4px_0px_0px_#000] active:translate-x-4 active:translate-y-4 active:shadow-none transition-all group flex flex-col md:flex-row items-center justify-center gap-4"
           >
-            <Plus className="w-12 h-12 stroke-[4] text-black group-hover:rotate-90 transition-transform duration-300" />
+            <Plus className="w-12 h-12 stroke-4 text-black group-hover:rotate-90 transition-transform duration-300" />
             <h1 className="text-3xl md:text-5xl font-black text-black uppercase tracking-tighter">
               Create New Exam
             </h1>
@@ -202,7 +233,7 @@ export default function TeacherDashboard() {
 
           <div className="bg-black text-white border-[6px] border-black shadow-[8px_8px_0px_0px_#FF6B9E] p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
             <div className="bg-[#FF6B9E] p-3 border-4 border-black shrink-0 animate-pulse">
-              <AlertTriangle className="w-8 h-8 text-black stroke-[3]" />
+              <AlertTriangle className="w-8 h-8 text-black stroke-3" />
             </div>
             <div>
               <h3 className="font-black uppercase tracking-widest text-xl text-[#FF6B9E] mb-1">
@@ -242,7 +273,7 @@ export default function TeacherDashboard() {
                   className={`${colorClass} border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 hover:translate-x-1 hover:translate-y-1 hover:shadow-[4px_4px_0px_0px_#000] transition-all group`}
                 >
                   <div className="flex-1">
-                    <h2 className="text-3xl md:text-4xl font-black text-black uppercase leading-[1.1] tracking-tighter break-words mb-3">
+                    <h2 className="text-3xl md:text-4xl font-black text-black uppercase leading-[1.1] tracking-tighter wrap-break-word mb-3">
                       {exam.title || "Untitled"}
                     </h2>
                     <div className="flex flex-wrap items-center gap-3 font-bold uppercase text-black/80 text-sm md:text-base">
@@ -266,23 +297,23 @@ export default function TeacherDashboard() {
                       onClick={(e) =>
                         handleDownloadResults(e, exam.code, exam.title)
                       }
-                      className="bg-white text-black border-[4px] border-black p-3 md:p-4 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-[#a855f7] hover:text-white transition-all group/btn"
+                      className="bg-white text-black border-4 border-black p-3 md:p-4 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-[#a855f7] hover:text-white transition-all group/btn"
                       title="Download Results"
                     >
-                      <Download className="w-6 h-6 md:w-7 md:h-7 stroke-[3] group-hover/btn:animate-bounce" />
+                      <Download className="w-6 h-6 md:w-7 md:h-7 stroke-3 group-hover/btn:animate-bounce" />
                     </button>
                     <button
                       onClick={(e) => handleDelete(e, exam.id)}
-                      className="bg-white text-black border-[4px] border-black p-3 md:p-4 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-black hover:text-[#FF6B9E] transition-all"
+                      className="bg-white text-black border-4 border-black p-3 md:p-4 shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-black hover:text-[#FF6B9E] transition-all"
                       title="Delete Exam"
                     >
-                      <Trash2 className="w-6 h-6 md:w-7 md:h-7 stroke-[3]" />
+                      <Trash2 className="w-6 h-6 md:w-7 md:h-7 stroke-3" />
                     </button>
                     <Link
                       href={`/teacher/monitor/${exam.code}`}
-                      className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-black text-white px-6 py-4 font-black uppercase tracking-widest border-[4px] border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-[#00E57A] hover:text-black transition-all whitespace-nowrap"
+                      className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-black text-white px-6 py-4 font-black uppercase tracking-widest border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none hover:bg-[#00E57A] hover:text-black transition-all whitespace-nowrap"
                     >
-                      <Monitor className="w-6 h-6 stroke-[3]" /> Monitor
+                      <Monitor className="w-6 h-6 stroke-3" /> Monitor
                     </Link>
                   </div>
                 </div>

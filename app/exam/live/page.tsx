@@ -58,6 +58,7 @@ export default function ActiveExamPage() {
   const [isDetention, setIsDetention] = useState(false);
   const [detentionEndTime, setDetentionEndTime] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [examPenaltySeconds, setExamPenaltySeconds] = useState<number>(120); // Default to 120s
   const [problem, setProblem] = useState(createProblem());
   const [mathInput, setMathInput] = useState("");
 
@@ -137,7 +138,7 @@ export default function ActiveExamPage() {
 
         const { data: examData, error: examErr } = await supabase
           .from("exams")
-          .select("id, time_limit, status")
+          .select("id, time_limit, status,penalty_seconds")
           .eq("code", storedExamCode)
           .single();
 
@@ -147,6 +148,11 @@ export default function ActiveExamPage() {
         const currentStatus = examData.status || "live";
         setExamStatus(currentStatus);
         setExamTimeLimit(examData.time_limit);
+
+        // 🟢 Save the fetched penalty to our new state
+if (examData.penalty_seconds) {
+  setExamPenaltySeconds(examData.penalty_seconds);
+}
 
         if (
           currentStatus === "live" &&
@@ -316,23 +322,25 @@ export default function ActiveExamPage() {
       examStatus === "waiting"
     )
       return;
-    const triggerDetention = async () => {
-      const penaltyEndTime = new Date(Date.now() + 120000).toISOString();
-      setIsDetention(true);
-      setDetentionEndTime(penaltyEndTime);
-      try {
-        await supabase
-          .from("students")
-          .update({
-            status: "detention",
-            detention_end_time: penaltyEndTime,
-            current_question_index: currentIndex,
-          })
-          .eq("id", studentId);
-      } catch (err: unknown) {
-        console.error("Failed to update detention", err);
-      }
-    };
+const triggerDetention = async () => {
+  // 🟢 Use the dynamic state (seconds * 1000 = milliseconds)
+  const penaltyEndTime = new Date(Date.now() + (examPenaltySeconds * 1000)).toISOString(); 
+  
+  setIsDetention(true);
+  setDetentionEndTime(penaltyEndTime);
+  try {
+    await supabase
+      .from("students")
+      .update({
+        status: "detention",
+        detention_end_time: penaltyEndTime,
+        current_question_index: currentIndex,
+      })
+      .eq("id", studentId);
+  } catch (err: unknown) { // Using 'unknown' type for error catching
+    console.error("Failed to update detention", err);
+  }
+};
     const handleVisibilityChange = () => {
       if (document.hidden) triggerDetention();
     };

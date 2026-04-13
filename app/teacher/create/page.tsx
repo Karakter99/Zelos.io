@@ -40,6 +40,7 @@ export default function CreateExamPage() {
 
   const [examTitle, setExamTitle] = useState("");
   const [timeLimit, setTimeLimit] = useState<number | "">(60); // 🟢 New state for Time Limit
+  const [penaltySeconds, setPenaltySeconds] = useState<number | "">(120);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
@@ -172,6 +173,7 @@ export default function CreateExamPage() {
             teacher_id: teacherId,
             created_by_email: teacherEmail,
             time_limit: timeLimit, // 🟢 Save time limit to database
+            penalty_seconds: penaltySeconds === "" ? 120 : penaltySeconds,
           },
         ])
         .select("id")
@@ -289,6 +291,23 @@ export default function CreateExamPage() {
                   className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black text-center shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
                 />
               </div>
+              {/* 🟢 Penalty (Seconds) Input */}
+<div className="flex flex-col gap-2 sm:w-48 shrink-0">
+  <label className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
+    <Clock className="w-4 h-4 text-red-500" /> Penalty (Secs)
+  </label>
+  <input
+    type="number"
+    min="10"
+    value={penaltySeconds}
+    onChange={(e) =>
+      setPenaltySeconds(
+        e.target.value === "" ? "" : Number(e.target.value),
+      )
+    }
+    className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black text-center shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all focus:border-red-500"
+  />
+</div>
             </div>
           </div>
 

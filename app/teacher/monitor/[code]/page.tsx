@@ -99,24 +99,47 @@ export default function LiveCheatMonitor() {
   }, [examCode]);
 
   // --- 🟢 MASTER SWITCH FUNCTION 🟢 ---
-const handleStartExam = async () => {
-  setConfirmModal({
-    message: "Are you sure? This will instantly start the timer for all students!",
-    onConfirm: async () => {
-      try {
-        const now = new Date().toISOString();
-        await supabase
-          .from("exams")
-          .update({ status: "live", started_at: now })
-          .eq("id", exam?.id);
-        setExamStatus("live");
-      } catch (err: unknown) {
-        console.error("Error starting exam:", err);
-        alert("Failed to start exam.");
+
+// 🟢 1. SINAVI BAŞLATMA
+  const handleStartExam = async () => {
+    setConfirmModal({
+      message: "Are you sure? This will instantly start the timer for all students!",
+      onConfirm: async () => {
+        try {
+          const now = new Date().toISOString();
+          await supabase
+            .from("exams")
+            .update({ status: "live", started_at: now })
+            .eq("id", exam?.id);
+
+          setExamStatus("live");
+        } catch (err: unknown) {
+          console.error("Error starting exam:", err);
+          alert("Failed to start exam.");
+        }
       }
-    },
-  });
-};
+    });
+  };
+
+  // 🟢 2. SINAVI BİTİRME (YENİ EKLENEN)
+  const handleEndExam = async () => {
+    setConfirmModal({
+      message: "Are you sure you want to END the exam for everyone? Students will be locked out.",
+      onConfirm: async () => {
+        try {
+          await supabase
+            .from("exams")
+            .update({ status: "finished" })
+            .eq("id", exam?.id);
+
+          setExamStatus("finished");
+        } catch (err: unknown) {
+          console.error("Error ending exam:", err);
+          alert("Failed to end exam.");
+        }
+      }
+    });
+  };
 
   const exportToExcel = () => {
     if (students.length === 0) return alert("No students to export yet!");
@@ -146,50 +169,51 @@ const handleStartExam = async () => {
       : "Exam";
     XLSX.writeFile(workbook, `${safeTitle}_Class_Results.xlsx`);
   };
-
+// 🟢 3. AFFETME VE KİLİDİ AÇMA
   const handleRemoveSuspension = async (studentId: string) => {
-    if (!window.confirm("Are you sure you want to unlock this student?"))
-      return;
-    try {
-      await supabase
-        .from("students")
-        .update({ status: "active", detention_end_time: null })
-        .eq("id", studentId);
-      setStudents((prev) =>
-        prev.map((s) =>
-          s.id === studentId
-            ? { ...s, status: "active", detention_end_time: null }
-            : s,
-        ),
-      );
-    } catch (err: unknown) {
-      console.error("Failed to unlock:", err);
-    }
+    setConfirmModal({
+      message: "Are you sure you want to unlock this student?",
+      onConfirm: async () => {
+        try {
+          await supabase
+            .from("students")
+            .update({ status: "active", detention_end_time: null })
+            .eq("id", studentId);
+          setStudents((prev) =>
+            prev.map((s) =>
+              s.id === studentId
+                ? { ...s, status: "active", detention_end_time: null }
+                : s,
+            ),
+          );
+        } catch (err: unknown) {
+          console.error("Failed to unlock:", err);
+        }
+      }
+    });
   };
-
-  const handleForceBlock = async (studentId: string) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to send this student to detention?",
-      )
-    )
-      return;
-    const penaltyTime = new Date(Date.now() + 120000).toISOString();
-    try {
-      await supabase
-        .from("students")
-        .update({ status: "detention", detention_end_time: penaltyTime })
-        .eq("id", studentId);
-      setStudents((prev) =>
-        prev.map((s) =>
-          s.id === studentId
-            ? { ...s, status: "detention", detention_end_time: penaltyTime }
-            : s,
-        ),
-      );
-    } catch (err: unknown) {
-      console.error("Failed to force block:", err);
-    }
+const handleForceBlock = async (studentId: string) => {
+    setConfirmModal({
+      message: "Are you sure you want to send this student to detention?",
+      onConfirm: async () => {
+        const penaltyTime = new Date(Date.now() + 120000).toISOString();
+        try {
+          await supabase
+            .from("students")
+            .update({ status: "detention", detention_end_time: penaltyTime })
+            .eq("id", studentId);
+          setStudents((prev) =>
+            prev.map((s) =>
+              s.id === studentId
+                ? { ...s, status: "detention", detention_end_time: penaltyTime }
+                : s,
+            ),
+          );
+        } catch (err: unknown) {
+          console.error("Failed to force block:", err);
+        }
+      }
+    });
   };
 
   const activeCount = students.filter(
@@ -263,6 +287,7 @@ const handleStartExam = async () => {
 
           <div className="flex flex-wrap items-center gap-4">
             {/* 🟢 THE MASTER SWITCH UI (SMALLER ICON) 🟢 */}
+           {/* 🟢 THE MASTER SWITCH UI (SMALLER ICON) 🟢 */}
             {examStatus === "waiting" || !examStatus ? (
               <button
                 onClick={handleStartExam}
@@ -278,15 +303,34 @@ const handleStartExam = async () => {
                   </div>
                 </div>
               </button>
-            ) : (
-              <div className="bg-black text-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#00E57A] p-4 flex items-center gap-3">
-                <Radio className="w-7 h-7 stroke-[3] animate-pulse" />
+            ) : examStatus === "live" ? (
+              <button
+                onClick={handleEndExam}
+                className="bg-black text-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#FF6B9E] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer group"
+              >
+                <Radio className="w-7 h-7 stroke-[3] animate-pulse group-hover:hidden" />
+                <Lock className="w-7 h-7 stroke-[3] hidden group-hover:block" />
                 <div className="text-left">
-                  <div className="text-2xl font-black uppercase leading-none tracking-tighter">
+                  <div className="text-2xl font-black uppercase leading-none tracking-tighter group-hover:text-white">
                     Live
                   </div>
-                  <div className="text-xs font-black uppercase tracking-widest opacity-80">
+                  <div className="text-xs font-black uppercase tracking-widest opacity-80 group-hover:hidden">
                     Test Active
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-widest text-white hidden group-hover:block">
+                    Click to End Exam
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <div className="bg-[#00E57A] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
+                <CheckCircle2 className="w-7 h-7 stroke-[3]" />
+                <div className="text-left">
+                  <div className="text-2xl font-black uppercase leading-none tracking-tighter">
+                    Finished
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-widest opacity-80">
+                    Exam Closed
                   </div>
                 </div>
               </div>
@@ -476,6 +520,32 @@ const handleStartExam = async () => {
               </div>
             );
           })}
+          {confirmModal && (
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
+            <p className="text-xl font-black uppercase mb-8 text-[#FFE600] bg-black px-4 py-3">
+              {confirmModal.message}
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 bg-[#00E57A] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(null);
+                }}
+                className="flex-1 bg-[#FF6B9E] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+              >
+                Yes, Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
         </div>
       </main>
     </div>

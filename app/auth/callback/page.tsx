@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/app/utils/Supabase/client";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
-export default function AuthCallbackPage() {
+// 1. Asıl mantığın çalıştığı İç Bileşen (Content)
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
 
   useEffect(() => {
     const handleAuth = async () => {
-      // 1. Check for standard OAuth errors in the URL
+      // Check for standard OAuth errors in the URL
       const hash = window.location.hash;
       const params = new URLSearchParams(hash.replace("#", "?"));
       const errorDescription = params.get("error_description");
@@ -25,7 +26,7 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // 2. Get current session
+      // Get current session
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -34,15 +35,13 @@ export default function AuthCallbackPage() {
         const user = session.user;
         const source = searchParams.get("source");
 
-        // 3. SECURITY CHECK: Is this a brand new user who tried to "Login" instead of "Sign Up"?
-        // We check if their account was created within the last 10 seconds.
+        // SECURITY CHECK: Is this a brand new user who tried to "Login" instead of "Sign Up"?
         const createdTime = new Date(user.created_at).getTime();
         const now = new Date().getTime();
         const isBrandNewAccount = now - createdTime < 10000;
 
         if (isBrandNewAccount && source === "login") {
           // They clicked "Login" but didn't have an account!
-          // Kick them out and show an error.
           await supabase.auth.signOut();
           setError(
             "ACCOUNT NOT FOUND! You must Sign Up before you can log in.",
@@ -50,7 +49,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // 4. Success! Let them in.
+        // Success! Let them in.
         router.push("/teacher");
       }
     };
@@ -115,5 +114,32 @@ export default function AuthCallbackPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// 2. Ana Sayfa Dışa Aktarımı (Suspense ile Sarılmış Hali)
+export default function AuthCallbackPage() {
+  return (
+    // Fallback UI: React Suspense yüklenirken gösterilecek brutalist loading ekranı
+    <Suspense
+      fallback={
+        <div
+          className="min-h-screen bg-[#25c0f4] flex items-center justify-center p-6 text-black"
+          style={{
+            backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+            backgroundSize: "32px 32px",
+          }}
+        >
+          <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 max-w-md w-full text-center">
+            <Loader2 className="w-16 h-16 text-black mx-auto mb-4 animate-spin stroke-[3]" />
+            <h1 className="text-3xl font-black uppercase tracking-tighter">
+              Loading...
+            </h1>
+          </div>
+        </div>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

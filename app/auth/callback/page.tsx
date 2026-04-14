@@ -1,52 +1,75 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/app/utils/Supabase/client";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // 1. Get the URL hash
-    const hash = window.location.hash;
-    const params = new URLSearchParams(hash.replace("#", "?"));
+    const handleAuth = async () => {
+      // 1. Check for standard OAuth errors in the URL
+      const hash = window.location.hash;
+      const params = new URLSearchParams(hash.replace("#", "?"));
+      const errorDescription = params.get("error_description");
+      const errorCode = params.get("error_code");
 
-    // 2. Check for errors
-    const errorDescription = params.get("error_description");
-    const errorCode = params.get("error_code");
-
-    if (errorDescription || errorCode) {
-      setTimeout(() => {
+      if (errorDescription || errorCode) {
         setError(
           errorDescription?.replace(/\+/g, " ") || "Link expired or invalid",
         );
-      }, 0);
-      return;
-    }
-
-    // 🟢 3. NEW: Check if Supabase ALREADY logged them in while the page was rendering
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.push("/teacher"); // Or "/teacher/dashboard" depending on your setup
+        return;
       }
-    });
 
-    // 4. Listen for the "Auto-Login" event (if it takes a second)
+      // 2. Get current session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        const user = session.user;
+        const source = searchParams.get("source");
+
+        // 3. SECURITY CHECK: Is this a brand new user who tried to "Login" instead of "Sign Up"?
+        // We check if their account was created within the last 10 seconds.
+        const createdTime = new Date(user.created_at).getTime();
+        const now = new Date().getTime();
+        const isBrandNewAccount = now - createdTime < 10000;
+
+        if (isBrandNewAccount && source === "login") {
+          // They clicked "Login" but didn't have an account!
+          // Kick them out and show an error.
+          await supabase.auth.signOut();
+          setError(
+            "ACCOUNT NOT FOUND! You must Sign Up before you can log in.",
+          );
+          return;
+        }
+
+        // 4. Success! Let them in.
+        router.push("/teacher");
+      }
+    };
+
+    handleAuth();
+
+    // Listen for state changes just in case
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" || session) {
-        router.push("/teacher");
+      if (event === "SIGNED_IN" && session) {
+        handleAuth();
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, searchParams]);
 
-  // 🔴 ERROR UI (Link Expired)
+  // 🔴 ERROR UI
   if (error) {
     return (
       <div
@@ -57,23 +80,23 @@ export default function AuthCallbackPage() {
         }}
       >
         <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 max-w-md w-full text-center">
-          <AlertTriangle className="w-16 h-16 text-[#FF6B9E] mx-auto mb-4 stroke-3" />
-          <h1 className="text-3xl font-black uppercase tracking-tighter mb-2">
-            Link Expired
+          <AlertTriangle className="w-16 h-16 text-[#FF6B9E] mx-auto mb-4 stroke-[3]" />
+          <h1 className="text-3xl font-black uppercase tracking-tighter mb-2 leading-none">
+            Access Denied
           </h1>
-          <p className="font-bold mb-8">{error}</p>
+          <p className="font-bold mb-8 text-black/80">{error}</p>
           <button
             onClick={() => router.push("/teacher/signup")}
-            className="w-full bg-black text-white font-black uppercase py-4 border-4 border-black hover:bg-[#25c0f4] hover:text-black transition-all"
+            className="w-full bg-black text-white font-black uppercase py-4 border-4 border-black hover:bg-[#25c0f4] hover:text-black transition-all shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none"
           >
-            Try Again
+            Go to Sign Up
           </button>
         </div>
       </div>
     );
   }
 
-  // 🟡 LOADING UI (Verifying...)
+  // 🟡 LOADING UI
   return (
     <div
       className="min-h-screen bg-[#25c0f4] flex items-center justify-center p-6 text-black"
@@ -83,12 +106,12 @@ export default function AuthCallbackPage() {
       }}
     >
       <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 max-w-md w-full text-center">
-        <Loader2 className="w-16 h-16 text-black mx-auto mb-4 animate-spin stroke-3" />
+        <Loader2 className="w-16 h-16 text-black mx-auto mb-4 animate-spin stroke-[3]" />
         <h1 className="text-3xl font-black uppercase tracking-tighter">
           Verifying...
         </h1>
-        <p className="font-bold mt-2">
-          Just a moment while we unlock the gates.
+        <p className="font-bold mt-2 text-black/80">
+          Checking your credentials...
         </p>
       </div>
     </div>

@@ -43,7 +43,7 @@ export default function PricingPage() {
       });
 
       const { url, error } = await response.json();
-      
+
       if (error) throw new Error(error);
 
       // 3. Redirect user to the Stripe-hosted checkout page
@@ -71,18 +71,27 @@ export default function PricingPage() {
       name: "Single Strike",
       price: "1",
       description: "Perfect for a single assessment",
-      features: ["1 Full Exam Session", "Priority Support", "Detailed Analytics"],
-      priceId: "price_SINGLE_EXAM_ID", // Replace with your Stripe Price ID
+      features: [
+        "1 Full Exam Session",
+        "Priority Support",
+        "Detailed Analytics",
+      ],
+      priceId: "price_1TVqr90JUB4PrmnjOtoVJrFT", // Replace with your Stripe Price ID
       buttonText: "Buy 1 Credit",
       icon: <Zap className="w-8 h-8" />,
       color: "bg-[#25c0f4]",
     },
     {
       name: "Power Pack",
-      price: "8",
+      price: "4",
       description: "Best value for active teachers",
-      features: ["5 Full Exam Sessions", "Priority Support", "Detailed Analytics", "Custom Templates"],
-      priceId: "price_FIVE_EXAMS_ID", // Replace with your Stripe Price ID
+      features: [
+        "5 Full Exam Sessions",
+        "Priority Support",
+        "Detailed Analytics",
+        "Custom Templates",
+      ],
+      priceId: "price_1TVqwL0JUB4PrmnjplaDhq7b", // Replace with your Stripe Price ID
       buttonText: "Buy 5 Credits",
       icon: <Rocket className="w-8 h-8" />,
       color: "bg-[#FFE600]",
@@ -90,7 +99,7 @@ export default function PricingPage() {
   ];
 
   return (
-    <div 
+    <div
       className="min-h-screen bg-[#FFE600] relative flex flex-col font-sans selection:bg-black selection:text-[#FFE600]"
       style={{
         backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
@@ -102,14 +111,20 @@ export default function PricingPage() {
       <main className="flex-1 py-20 px-6 relative z-10">
         <div className="max-w-6xl mx-auto text-center mb-16">
           <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none text-black mb-6">
-            Pick Your <br /> <span className="bg-black text-white px-4">Power.</span>
+            Pick Your <br />{" "}
+            <span className="bg-black text-white px-4">Power.</span>
           </h1>
-          <p className="text-xl font-bold uppercase text-black/70 italic">No Subscriptions. Just Flow.</p>
+          <p className="text-xl font-bold uppercase text-black/70 italic">
+            No Subscriptions. Just Flow.
+          </p>
         </div>
 
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
           {plans.map((plan) => (
-            <div key={plan.name} className={`flex flex-col border-8 border-black text-black p-8 shadow-[12px_12px_0px_0px_#000] ${plan.color}`}>
+            <div
+              key={plan.name}
+              className={`flex flex-col border-8 border-black text-black p-8 shadow-[12px_12px_0px_0px_#000] ${plan.color}`}
+            >
               <div className="mb-6 flex justify-between items-start">
                 <div className="p-3 bg-black text-white border-4 border-black">
                   {plan.icon}
@@ -119,12 +134,19 @@ export default function PricingPage() {
                 </div>
               </div>
 
-              <h3 className="text-3xl font-black uppercase tracking-tighter mb-2">{plan.name}</h3>
-              <p className="font-bold text-sm uppercase mb-8">{plan.description}</p>
+              <h3 className="text-3xl font-black uppercase tracking-tighter mb-2">
+                {plan.name}
+              </h3>
+              <p className="font-bold text-sm uppercase mb-8">
+                {plan.description}
+              </p>
 
               <ul className="space-y-4 mb-10 flex-1">
                 {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-center gap-3 font-bold uppercase text-sm">
+                  <li
+                    key={feature}
+                    className="flex items-center gap-3 font-bold uppercase text-sm"
+                  >
                     <Check className="w-5 h-5 stroke-[4] shrink-0" />
                     {feature}
                   </li>
@@ -132,7 +154,11 @@ export default function PricingPage() {
               </ul>
 
               <button
-                onClick={() => plan.priceId ? handleStripeRedirect(plan.priceId, plan.name) : router.push("/teacher/signup")}
+                onClick={() =>
+                  plan.priceId
+                    ? handleStripeRedirect(plan.priceId, plan.name)
+                    : router.push("/teacher/signup")
+                }
                 disabled={loading === plan.name}
                 className="w-full bg-black text-white p-5 text-xl font-black uppercase flex items-center justify-center gap-3 hover:translate-x-1 hover:translate-y-1 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.3)] transition-all disabled:opacity-50"
               >

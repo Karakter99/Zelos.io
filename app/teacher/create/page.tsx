@@ -13,7 +13,7 @@ import {
   Eye,
   History,
   Download,
-  Clock, // 🟢 Added Clock icon for the timer
+  Clock,
 } from "lucide-react";
 
 interface Question {
@@ -39,12 +39,13 @@ export default function CreateExamPage() {
   const [teacherEmail, setTeacherEmail] = useState<string | null>(null);
 
   const [examTitle, setExamTitle] = useState("");
-  const [timeLimit, setTimeLimit] = useState<number | "">(60); // 🟢 New state for Time Limit
+  const [timeLimit, setTimeLimit] = useState<number | "">(60);
   const [penaltySeconds, setPenaltySeconds] = useState<number | "">(120);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
-  // Check authentication on mount
+  const [showNoCreditModal, setShowNoCreditModal] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -60,9 +61,21 @@ export default function CreateExamPage() {
         return;
       }
 
+      const { data: profile } = await supabase
+        .from("teacher_profiles")
+        .select("credits")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile || profile.credits <= 0) {
+        setShowNoCreditModal(true);
+        setCheckingAuth(false);
+        return;
+      }
+
       setTeacherId(user.id);
       setTeacherEmail(user.email || null);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Auth check error:", error);
       router.push("/teacher/login");
     } finally {
@@ -70,7 +83,6 @@ export default function CreateExamPage() {
     }
   };
 
-  // Download template function
   const downloadTemplate = () => {
     const templateData: ExcelQuestionRow[] = [
       {
@@ -143,8 +155,6 @@ export default function CreateExamPage() {
       return;
     }
 
-    // 🟢 Validation for time limit
-
     if (timeLimit === "" || timeLimit < 1) {
       alert("Time limit must be at least 1 minute.");
       return;
@@ -159,10 +169,20 @@ export default function CreateExamPage() {
     setLoading(true);
 
     try {
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      console.log("1. Starting Exam Upload...");
+      const { data: profile, error: profileError } = await supabase
+        .from("teacher_profiles")
+        .select("credits")
+        .eq("id", teacherId)
+        .single();
 
-      // Step 1: Create the Exam linked to this teacher (WITH TIME LIMIT)
+      if (profileError || !profile || profile.credits <= 0) {
+        setShowNoCreditModal(true);
+        setLoading(false);
+        return;
+      }
+
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
       const { data: exam, error: examError } = await supabase
         .from("exams")
         .insert([
@@ -172,7 +192,7 @@ export default function CreateExamPage() {
             is_active: true,
             teacher_id: teacherId,
             created_by_email: teacherEmail,
-            time_limit: timeLimit, // 🟢 Save time limit to database
+            time_limit: timeLimit,
             penalty_seconds: penaltySeconds === "" ? 120 : penaltySeconds,
           },
         ])
@@ -187,9 +207,6 @@ export default function CreateExamPage() {
         throw new Error("Exam created, but Supabase did not return the ID.");
       }
 
-      console.log("2. Exam Created! ID:", exam.id);
-
-      // Step 2: Prepare the Questions Payload
       const questionPayload = questions.map((q) => ({
         exam_id: exam.id,
         text: q.text,
@@ -198,18 +215,21 @@ export default function CreateExamPage() {
         type: "multiple_choice",
       }));
 
-      console.log(
-        "3. Payload prepared. Uploading questions...",
-        questionPayload,
-      );
-
-      // Step 3: Insert Questions
       const { error: qError } = await supabase
         .from("questions")
         .insert(questionPayload);
 
       if (qError) {
         throw new Error("Questions Upload Failed: " + qError.message);
+      }
+
+      const { error: updateError } = await supabase
+        .from("teacher_profiles")
+        .update({ credits: profile.credits - 1 })
+        .eq("id", teacherId);
+
+      if (updateError) {
+        console.error("Failed to deduct credit:", updateError);
       }
 
       alert(`✅ Exam Created! Code: ${code}`);
@@ -226,8 +246,8 @@ export default function CreateExamPage() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen bg-[#FFD700] flex items-center justify-center font-black text-6xl">
-        Checking Authentication...
+      <div className="min-h-screen bg-[#FFD700] flex items-center justify-center font-black text-4xl md:text-5xl uppercase">
+        Loading...
       </div>
     );
   }
@@ -236,33 +256,60 @@ export default function CreateExamPage() {
     <div className="min-h-screen bg-[#f5f8f8] flex flex-col font-sans selection:bg-[#25c0f4] selection:text-black">
       <Navbar />
 
-      {/* Main Workspace */}
+      {/* 🟢 YETERSİZ KREDİ MODALI (Küçültüldü) */}
+      {showNoCreditModal && (
+        <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 max-w-sm w-full text-center flex flex-col items-center">
+            <p className="text-base font-black uppercase mb-4 text-black bg-[#FFE600] px-3 py-2 border-4 border-black w-full">
+              ⚠️ NO CREDITS: You need at least 1 credit.
+            </p>
+
+            <p className="text-lg font-black uppercase mb-6 text-black/80">
+              Wanna buy some credits?
+            </p>
+
+            <div className="flex gap-4 w-full">
+              <button
+                onClick={() => router.push("/teacher")}
+                className="flex-1 bg-white text-black border-4 border-black py-3 font-black uppercase text-base shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+              >
+                NO
+              </button>
+              <button
+                onClick={() => router.push("/pricing")}
+                className="flex-1 bg-[#00E57A] text-black border-4 border-black py-3 font-black uppercase text-base shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+              >
+                YES
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main
-        className="flex-1 p-6 md:p-10 bg-[#FFD700]"
+        className="flex-1 p-4 md:p-8 bg-[#FFD700]"
         style={{
           backgroundImage: "radial-gradient(#000 1px, transparent 1px)",
           backgroundSize: "30px 30px",
         }}
       >
-        <div className="max-w-6xl mx-auto space-y-10">
-          {/* Page Header & Settings */}
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+        <div className="max-w-5xl mx-auto space-y-8">
+          {/* HEADER & INPUTS (Küçültüldü) */}
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
-              <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-none text-black">
+              <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none text-black">
                 Upload
                 <br />
                 Questions
               </h1>
-              <p className="mt-4 text-xl font-bold uppercase bg-black text-white inline-block px-4 py-1 shadow-[4px_4px_0px_0px_#25c0f4]">
+              <p className="mt-2 text-sm md:text-base font-bold uppercase bg-black text-white inline-block px-3 py-1 shadow-[4px_4px_0px_0px_#25c0f4]">
                 Batch create via spreadsheet
               </p>
             </div>
 
-            {/* 🟢 Title and Time Limit Inputs */}
-            <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-              {/* Exam Title Input */}
-              <div className="flex flex-col gap-2 grow">
-                <label className="text-sm font-black uppercase tracking-widest text-black">
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+              <div className="flex flex-col gap-1.5 grow">
+                <label className="text-xs font-black uppercase tracking-widest text-black">
                   Exam Title
                 </label>
                 <input
@@ -270,14 +317,13 @@ export default function CreateExamPage() {
                   value={examTitle}
                   onChange={(e) => setExamTitle(e.target.value)}
                   placeholder="E.G. PHYSICS MIDTERM"
-                  className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                  className="w-full text-black bg-white border-4 border-black p-3 text-lg font-black uppercase shadow-[4px_4px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
                 />
               </div>
 
-              {/* Time Limit Input */}
-              <div className="flex flex-col gap-2 sm:w-48 shrink-0">
-                <label className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> Time (Mins)
+              <div className="flex flex-col gap-1.5 sm:w-40 shrink-0">
+                <label className="text-xs font-black uppercase tracking-widest text-black flex items-center gap-2">
+                  <Clock className="w-3 h-3" /> Time (Mins)
                 </label>
                 <input
                   type="number"
@@ -288,30 +334,30 @@ export default function CreateExamPage() {
                       e.target.value === "" ? "" : Number(e.target.value),
                     )
                   }
-                  className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black text-center shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                  className="w-full text-black bg-white border-4 border-black p-3 text-lg font-black text-center shadow-[4px_4px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
                 />
               </div>
-              {/* 🟢 Penalty (Seconds) Input */}
-<div className="flex flex-col gap-2 sm:w-48 shrink-0">
-  <label className="text-sm font-black uppercase tracking-widest text-black flex items-center gap-2">
-    <Clock className="w-4 h-4 text-red-500" /> Penalty (Secs)
-  </label>
-  <input
-    type="number"
-    min="10"
-    value={penaltySeconds}
-    onChange={(e) =>
-      setPenaltySeconds(
-        e.target.value === "" ? "" : Number(e.target.value),
-      )
-    }
-    className="w-full text-black bg-white border-4 border-black p-4 text-xl font-black text-center shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all focus:border-red-500"
-  />
-</div>
+
+              <div className="flex flex-col gap-1.5 sm:w-40 shrink-0">
+                <label className="text-xs font-black uppercase tracking-widest text-black flex items-center gap-2">
+                  <Clock className="w-3 h-3 text-red-500" /> Penalty (Secs)
+                </label>
+                <input
+                  type="number"
+                  min="10"
+                  value={penaltySeconds}
+                  onChange={(e) =>
+                    setPenaltySeconds(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
+                  }
+                  className="w-full text-black bg-white border-4 border-black p-3 text-lg font-black text-center shadow-[4px_4px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all focus:border-red-500"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Drop Zone */}
+          {/* DROPZONE (Küçültüldü) */}
           <div
             className="relative group"
             onDragOver={(e) => {
@@ -325,9 +371,9 @@ export default function CreateExamPage() {
               handleFileUpload(e);
             }}
           >
-            <div className="absolute inset-0 bg-black translate-x-3 translate-y-3"></div>
+            <div className="absolute inset-0 bg-black translate-x-2 translate-y-2"></div>
             <div
-              className={`relative bg-white border-8 border-black p-12 md:p-20 flex flex-col items-center text-center cursor-pointer border-dashed transition-colors ${dragActive ? "bg-[#25c0f4]" : ""}`}
+              className={`relative bg-white border-[6px] border-black p-8 md:p-12 flex flex-col items-center text-center cursor-pointer border-dashed transition-colors ${dragActive ? "bg-[#25c0f4]" : ""}`}
             >
               <input
                 type="file"
@@ -336,69 +382,67 @@ export default function CreateExamPage() {
                 onChange={handleFileUpload}
               />
 
-              <div className="size-32 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] flex items-center justify-center mb-8 rotate-3 group-hover:rotate-0 transition-transform">
+              <div className="size-20 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] flex items-center justify-center mb-6 rotate-3 group-hover:rotate-0 transition-transform">
                 {questions.length > 0 ? (
-                  <Check className="w-16 h-16 text-black stroke-3" />
+                  <Check className="w-10 h-10 text-black stroke-[3]" />
                 ) : (
-                  <UploadCloud className="w-16 h-16 text-black stroke-3" />
+                  <UploadCloud className="w-10 h-10 text-black stroke-[3]" />
                 )}
               </div>
 
-              <h2 className="text-4xl font-black uppercase text-black mb-4">
+              <h2 className="text-2xl md:text-3xl font-black uppercase text-black mb-2">
                 {questions.length > 0
                   ? `${questions.length} QUESTIONS LOADED`
                   : "Drag & Drop .XLSX"}
               </h2>
-              <p className="text-xl font-bold text-black/60 uppercase max-w-md">
-                Or click to browse your computer for a question spreadsheet
+              <p className="text-base md:text-lg font-bold text-black/60 uppercase max-w-sm">
+                Or click to browse your computer
               </p>
             </div>
           </div>
 
-          {/* Preview Section */}
+          {/* PREVIEW TABLOSU */}
           {questions.length > 0 && (
-            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
-                <h2 className="text-4xl font-black uppercase tracking-tighter text-black flex items-center gap-3">
-                  <Eye className="w-10 h-10" /> Preview
+                <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-black flex items-center gap-2">
+                  <Eye className="w-8 h-8" /> Preview
                 </h2>
                 <button
                   onClick={() => setQuestions([])}
-                  className="bg-black text-[#FFD700] px-4 py-1 font-black uppercase hover:bg-red-500 transition-colors"
+                  className="bg-black text-[#FFD700] px-4 py-1 text-sm font-black uppercase hover:bg-red-500 transition-colors"
                 >
                   Clear All
                 </button>
               </div>
 
-              <div className="overflow-x-auto border-4 border-black shadow-[8px_8px_0px_0px_#000] bg-white">
+              <div className="overflow-x-auto border-4 border-black shadow-[6px_6px_0px_0px_#000] bg-white">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-black text-white uppercase text-sm font-black">
-                      <th className="p-4 border-r-4 border-white/20">
+                    <tr className="bg-black text-white uppercase text-xs font-black">
+                      <th className="p-3 border-r-4 border-white/20">
                         Question Text
                       </th>
-                      <th className="p-4 border-r-4 border-white/20">
+                      <th className="p-3 border-r-4 border-white/20">
                         Options
                       </th>
-                      <th className="p-4 border-r-4 border-white/20">
-                        Correct
-                      </th>
+                      <th className="p-3">Correct</th>
                     </tr>
                   </thead>
-                  <tbody className="text-black font-bold uppercase">
+                  <tbody className="text-black font-bold uppercase text-sm">
                     {questions.slice(0, 10).map((q, i) => (
                       <tr
                         key={i}
                         className="border-b-4 border-black last:border-0"
                       >
-                        <td className="p-4 border-r-4 border-black lowercase first-letter:uppercase">
+                        <td className="p-3 border-r-4 border-black lowercase first-letter:uppercase">
                           {q.text}
                         </td>
-                        <td className="p-4 border-r-4 border-black text-xs text-black/60 italic">
+                        <td className="p-3 border-r-4 border-black text-xs text-black/60 italic">
                           {q.options.join(", ")}
                         </td>
-                        <td className="p-4 border-r-4 border-black">
-                          <span className="bg-[#FFD700] px-3 py-1 border-2 border-black inline-block font-black">
+                        <td className="p-3">
+                          <span className="bg-[#FFD700] px-2 py-1 border-2 border-black inline-block font-black">
                             {q.answer}
                           </span>
                         </td>
@@ -410,61 +454,60 @@ export default function CreateExamPage() {
             </div>
           )}
 
-          {/* Help Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-32">
-            <div className="border-4 border-black bg-white p-6 shadow-[6px_6px_0px_0px_#000]">
-              <h3 className="text-2xl font-black uppercase mb-4 flex items-center gap-2 text-black">
-                <History className="w-6 h-6" /> Recently Uploaded
+          {/* HELP SECTIONS (Küçültüldü) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-24">
+            <div className="border-4 border-black bg-white p-5 shadow-[4px_4px_0px_0px_#000]">
+              <h3 className="text-xl font-black uppercase mb-2 flex items-center gap-2 text-black">
+                <History className="w-5 h-5" /> Recently Uploaded
               </h3>
-              <p className="text-sm text-black/60 font-bold">
+              <p className="text-xs text-black/60 font-bold">
                 Your recent uploads will appear here
               </p>
             </div>
 
-            <div className="border-4 border-black bg-[#25c0f4] p-6 shadow-[6px_6px_0px_0px_#000] flex flex-col justify-center items-center text-center">
-              <HelpCircle className="text-black w-12 h-12 mb-2" />
-              <h3 className="text-2xl font-black uppercase text-black mb-2">
+            <div className="border-4 border-black bg-[#25c0f4] p-5 shadow-[4px_4px_0px_0px_#000] flex flex-col justify-center items-center text-center">
+              <HelpCircle className="text-black w-10 h-10 mb-2" />
+              <h3 className="text-xl font-black uppercase text-black mb-2">
                 Need Help?
               </h3>
-              <p className="font-bold uppercase text-black/80 text-sm">
-                Spreadsheet must have headers: text, option1, option2, option3,
-                option4, answer.
+              <p className="font-bold uppercase text-black/80 text-xs mb-3">
+                Headers needed: text, option1, option2, option3, option4,
+                answer.
               </p>
               <button
                 onClick={downloadTemplate}
-                className="mt-4 flex items-center gap-2 underline decoration-4 font-black uppercase text-black text-lg hover:text-white transition-colors"
+                className="flex items-center gap-2 underline decoration-2 font-black uppercase text-black text-sm hover:text-white transition-colors"
               >
-                <Download className="w-5 h-5" />
-                Download Template
+                <Download className="w-4 h-4" /> Download Template
               </button>
             </div>
           </div>
         </div>
       </main>
 
-      {/* Floating Action Bar */}
-      <footer className="sticky bottom-0 bg-white border-t-8 border-black p-6 flex items-center justify-between z-50">
+      {/* FOOTER ACTION BAR (Küçültüldü) */}
+      <footer className="sticky bottom-0 bg-white border-t-[6px] border-black p-4 md:px-8 flex items-center justify-between z-50">
         <div className="hidden md:flex items-center gap-2">
-          <HelpCircle className="w-5 h-5 text-black" />
+          <HelpCircle className="w-4 h-4 text-black" />
           <span className="font-black uppercase text-xs">
-            Review your questions before publishing to the class database.
+            Review before publishing.
           </span>
         </div>
 
         <div className="flex items-center gap-4 w-full md:w-auto">
           <button
             onClick={() => router.push("/teacher")}
-            className=" text-red-400 flex-1 md:flex-none px-10 py-4 bg-white border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase"
+            className="text-red-500 flex-1 md:flex-none px-6 py-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-lg font-black uppercase"
           >
             Cancel
           </button>
           <button
             onClick={handleSaveExam}
             disabled={loading}
-            className="flex-1 md:flex-none px-10 py-4 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-xl font-black uppercase flex items-center justify-center gap-3 disabled:opacity-50"
+            className="flex-1 md:flex-none px-8 py-3 bg-[#25c0f4] border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all text-lg font-black uppercase flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <Send className="w-6 h-6 stroke-3" />
-            {loading ? "SAVING..." : "Save & Publish"}
+            <Send className="w-5 h-5 stroke-[3]" />
+            {loading ? "SAVING..." : "Save"}
           </button>
         </div>
       </footer>

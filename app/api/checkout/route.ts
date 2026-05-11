@@ -1,39 +1,54 @@
-import Stripe from "stripe";
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-02-25.clover", // Kendi Stripe API versiyonuna göre güncelleyebilirsin
+// Stripe başlatma
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+  // Eğer özel bir apiVersion kullanıyorsan buraya ekleyebilirsin, yoksa boş kalabilir.
 });
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const { priceId, userId, userEmail } = await req.json();
+    // 1. EKSİK OLAN KISIM: İstekten (Request) priceId değerini alıyoruz
+    const body = await request.json();
+    const { priceId } = body;
 
-    // Hangi priceId'nin kaç kredi kazandıracağını belirliyoruz
-    let creditsToAward = 0;
-    if (priceId === "price_1TVqr90JUB4PrmnjOtoVJrFT") {
-      creditsToAward = 1;
-    } else if (priceId === "price_1TVqwL0JUB4PrmnjplaDhq7b") {
-      creditsToAward = 5;
+    // Eğer priceId gelmediyse hata fırlat
+    if (!priceId) {
+      return NextResponse.json(
+        { error: "Price ID is required" },
+        { status: 400 },
+      );
     }
 
+    // 2. GÜVENLİ URL OLUŞTURMA (Geçersiz URL hatasını çözen kısım)
+    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://zelos.io";
+
+    if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+      baseUrl = `https://${baseUrl}`;
+    }
+
+    baseUrl = baseUrl.replace(/\/+$/, "");
+
+    // 3. STRIPE SESSION OLUŞTURMA
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: "payment", // ABONELİK DEĞİL, TEK SEFERLİK ÖDEME MODU
-      customer_email: userEmail,
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/teacher?payment=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
-      metadata: {
-        userId: userId, // Ödemeyi yapan öğretmenin id'si
-        credits: creditsToAward, // Webhook'ta kullanılacak kazanılan kredi miktarı
-      },
+      line_items: [
+        {
+          price: priceId, // Artık priceId tanımlı ve hata vermeyecek!
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${baseUrl}/teacher?payment=success`,
+      cancel_url: `${baseUrl}/pricing`,
     });
 
     return NextResponse.json({ url: session.url });
   } catch (err: unknown) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("Stripe Checkout Error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 },
+    );
   }
 }

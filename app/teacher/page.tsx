@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react"; // 🟢 Suspense eklendi
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../utils/Supabase/client";
@@ -29,7 +29,8 @@ type Exam = {
   created_at: string;
 };
 
-export default function TeacherDashboard() {
+// 🟢 Asıl içeriğimizi bir alt bileşen (DashboardContent) haline getirdik
+function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -181,16 +182,7 @@ export default function TeacherDashboard() {
   };
 
   return (
-    <div
-      className="min-h-screen flex flex-col font-sans selection:bg-black selection:text-[#facc15] bg-[#FFE600]"
-      style={{
-        backgroundImage: "radial-gradient(circle, #000 2px, transparent 2px)",
-        backgroundSize: "32px 32px",
-        backgroundAttachment: "fixed",
-      }}
-    >
-      <Navbar />
-
+    <>
       {confirmModal && (
         <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
           <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
@@ -317,7 +309,6 @@ export default function TeacherDashboard() {
                       <h2 className="text-3xl md:text-4xl font-black text-black uppercase tracking-tighter mb-3">
                         {exam.title || "Untitled"}
                       </h2>
-                      {/* 🟢 DÜZELTİLEN KISIM: Katı arka plan, siyah metin ve gölge */}
                       <div className="flex flex-wrap items-center gap-3 font-black uppercase text-sm text-black">
                         <span className="bg-white px-3 py-1 border-2 border-black flex items-center gap-1 shadow-[2px_2px_0px_0px_#000]">
                           <Clock className="w-4 h-4" />{" "}
@@ -331,7 +322,6 @@ export default function TeacherDashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      {/* 🟢 DÜZELTİLEN KISIM: text-black sınıfı eklendi */}
                       <button
                         onClick={(e) =>
                           handleDownloadResults(e, exam.code, exam.title)
@@ -360,6 +350,32 @@ export default function TeacherDashboard() {
           </div>
         </div>
       </main>
+    </>
+  );
+}
+
+// 🟢 Sayfanın Ana Çıktısı: İçeriği <Suspense> içine alıyoruz.
+// Vercel build esnasında hata vermesi bu sayede %100 engelleniyor.
+export default function TeacherDashboard() {
+  return (
+    <div
+      className="min-h-screen flex flex-col font-sans selection:bg-black selection:text-[#facc15] bg-[#FFE600]"
+      style={{
+        backgroundImage: "radial-gradient(circle, #000 2px, transparent 2px)",
+        backgroundSize: "32px 32px",
+        backgroundAttachment: "fixed",
+      }}
+    >
+      <Navbar />
+      <Suspense
+        fallback={
+          <div className="flex-1 flex items-center justify-center font-black text-4xl uppercase text-black">
+            Loading Dashboard...
+          </div>
+        }
+      >
+        <DashboardContent />
+      </Suspense>
       <Footer />
     </div>
   );

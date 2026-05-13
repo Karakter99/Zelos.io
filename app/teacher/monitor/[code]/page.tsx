@@ -14,6 +14,7 @@ import {
   Unlock,
   PlayCircle,
   Radio,
+  ArrowLeft, // 🟢 YENİ İKON EKLENDİ
 } from "lucide-react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -48,9 +49,9 @@ export default function LiveCheatMonitor() {
   const [loading, setLoading] = useState(true);
 
   const [confirmModal, setConfirmModal] = useState<{
-  message: string;
-  onConfirm: () => void;
-} | null>(null);
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   useEffect(() => {
     if (!examCode) return;
@@ -100,7 +101,7 @@ export default function LiveCheatMonitor() {
 
   // --- 🟢 MASTER SWITCH FUNCTION 🟢 ---
 
-// 🟢 1. SINAVI BAŞLATMA
+  // 🟢 1. SINAVI BAŞLATMA
   const handleStartExam = async () => {
     setConfirmModal({
       message: "Are you sure? This will instantly start the timer for all students!",
@@ -117,7 +118,7 @@ export default function LiveCheatMonitor() {
           console.error("Error starting exam:", err);
           alert("Failed to start exam.");
         }
-      }
+      },
     });
   };
 
@@ -137,7 +138,7 @@ export default function LiveCheatMonitor() {
           console.error("Error ending exam:", err);
           alert("Failed to end exam.");
         }
-      }
+      },
     });
   };
 
@@ -169,7 +170,8 @@ export default function LiveCheatMonitor() {
       : "Exam";
     XLSX.writeFile(workbook, `${safeTitle}_Class_Results.xlsx`);
   };
-// 🟢 3. AFFETME VE KİLİDİ AÇMA
+
+  // 🟢 3. AFFETME VE KİLİDİ AÇMA
   const handleRemoveSuspension = async (studentId: string) => {
     setConfirmModal({
       message: "Are you sure you want to unlock this student?",
@@ -189,10 +191,11 @@ export default function LiveCheatMonitor() {
         } catch (err: unknown) {
           console.error("Failed to unlock:", err);
         }
-      }
+      },
     });
   };
-const handleForceBlock = async (studentId: string) => {
+
+  const handleForceBlock = async (studentId: string) => {
     setConfirmModal({
       message: "Are you sure you want to send this student to detention?",
       onConfirm: async () => {
@@ -212,7 +215,7 @@ const handleForceBlock = async (studentId: string) => {
         } catch (err: unknown) {
           console.error("Failed to force block:", err);
         }
-      }
+      },
     });
   };
 
@@ -240,37 +243,47 @@ const handleForceBlock = async (studentId: string) => {
       }}
     >
       <Navbar />
+      
+      {/* 🟢 MODAL KISMI */}
       {confirmModal && (
-  <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
-    <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
-      <p className="text-xl font-black uppercase mb-8 text-[#FFE600] bg-black px-4 py-3">
-        {confirmModal.message}
-      </p>
-      <div className="flex gap-4">
-        <button
-          onClick={() => setConfirmModal(null)}
-          className="flex-1 bg-[#FF6B9E] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => {
-            confirmModal.onConfirm();
-            setConfirmModal(null);
-          }}
-          className="flex-1 bg-[#00E57A] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-        >
-          Yes, Start!
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
+            <p className="text-xl font-black uppercase mb-8 text-[#FFE600] bg-black px-4 py-3 border-2 border-black">
+              {confirmModal.message}
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 bg-[#FF6B9E] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(null);
+                }}
+                className="flex-1 bg-[#00E57A] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+              >
+                Yes, Confirm!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="flex-grow flex flex-col p-6 md:p-12 relative z-10 max-w-[1600px] mx-auto w-full gap-8">
         <div className=" text-black bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
+          
           <div>
+            {/* 🟢 DASHBOARD'A DÖNÜŞ BUTONU 🟢 */}
+            <button
+              onClick={() => router.push("/teacher")}
+              className="flex items-center gap-2 font-black uppercase text-sm mb-6 hover:translate-x-1 transition-transform bg-black text-white px-4 py-2 border-2 border-black shadow-[4px_4px_0px_0px_#25c0f4] w-fit"
+            >
+              <ArrowLeft className="w-5 h-5 stroke-[3]" /> Back to Dashboard
+            </button>
+
             <div className="bg-black text-white inline-block px-4 py-1 font-black uppercase tracking-widest text-sm mb-4 border-2 border-black shadow-[4px_4px_0px_0px_#25c0f4]">
               Live Monitor
             </div>
@@ -285,9 +298,8 @@ const handleForceBlock = async (studentId: string) => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            {/* 🟢 THE MASTER SWITCH UI (SMALLER ICON) 🟢 */}
-           {/* 🟢 THE MASTER SWITCH UI (SMALLER ICON) 🟢 */}
+          <div className="flex flex-wrap items-center gap-4 mt-4 xl:mt-0">
+            {/* 🟢 THE MASTER SWITCH UI 🟢 */}
             {examStatus === "waiting" || !examStatus ? (
               <button
                 onClick={handleStartExam}
@@ -336,7 +348,6 @@ const handleForceBlock = async (studentId: string) => {
               </div>
             )}
 
-            {/* Total Students Box (SMALLER ICON) */}
             <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
               <Users className="w-7 h-7 text-white stroke-[3]" />
               <div>
@@ -349,7 +360,6 @@ const handleForceBlock = async (studentId: string) => {
               </div>
             </div>
 
-            {/* Finished Box (SMALLER ICON) */}
             <div className="bg-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
               <CheckCircle2 className="w-7 h-7 text-black stroke-[3]" />
               <div>
@@ -362,7 +372,6 @@ const handleForceBlock = async (studentId: string) => {
               </div>
             </div>
 
-            {/* Detention Box (SMALLER ICON) */}
             <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 animate-pulse">
               <AlertTriangle className="w-7 h-7 text-black stroke-[3]" />
               <div>
@@ -375,7 +384,6 @@ const handleForceBlock = async (studentId: string) => {
               </div>
             </div>
 
-            {/* Results Button */}
             <Link
               href={`/teacher/results/${examCode}`}
               className="bg-[#FFE600] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer"
@@ -390,7 +398,6 @@ const handleForceBlock = async (studentId: string) => {
               </div>
             </Link>
 
-            {/* Export Button (SMALLER ICON) */}
             <button
               onClick={exportToExcel}
               className="bg-[#a855f7] text-white border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer group"
@@ -461,7 +468,6 @@ const handleForceBlock = async (studentId: string) => {
                 key={student.id}
                 className={`${cardBg} border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 flex flex-col relative transition-colors duration-300`}
               >
-                {/* 🟢 SMALLER STATUS ICON 🟢 */}
                 <div className="absolute -top-5 -right-5 bg-black text-white border-4 border-black shadow-[4px_4px_0px_0px_#fff] px-4 py-2 flex items-center gap-2 font-black uppercase tracking-widest text-sm z-10">
                   {statusIcon} {statusText}
                 </div>
@@ -490,7 +496,6 @@ const handleForceBlock = async (studentId: string) => {
                   </div>
                 </div>
 
-                {/* Hide teacher actions if the exam hasn't started yet! */}
                 {examStatus === "live" && !isFinished && !isDetention && (
                   <div className="mt-6">
                     <button
@@ -520,32 +525,6 @@ const handleForceBlock = async (studentId: string) => {
               </div>
             );
           })}
-          {confirmModal && (
-        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
-          <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
-            <p className="text-xl font-black uppercase mb-8 text-[#FFE600] bg-black px-4 py-3">
-              {confirmModal.message}
-            </p>
-            <div className="flex gap-4">
-              <button
-                onClick={() => setConfirmModal(null)}
-                className="flex-1 bg-[#00E57A] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  confirmModal.onConfirm();
-                  setConfirmModal(null);
-                }}
-                className="flex-1 bg-[#FF6B9E] text-black border-4 border-black py-4 font-black uppercase text-lg shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-              >
-                Yes, Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
         </div>
       </main>
     </div>

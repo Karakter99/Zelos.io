@@ -174,6 +174,12 @@ export default function TeacherSettingsPage() {
           >
             Exam
           </Link>
+                        <Link
+            href="/teacher/edit"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
+          >
+            Exam Edit
+          </Link>
           <Link
             href="#"
             className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 pointer-events-none"

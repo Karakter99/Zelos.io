@@ -11,12 +11,47 @@ import {
   Hourglass,
 } from "lucide-react";
 
+type QuestionType = "mc" | "tf" | "fib" | "ms" | "short" | "long";
+
 interface Question {
   id: string;
   text: string;
   options: string[];
-  // Note: 'answer' is GONE. The frontend never sees it!
+  type: QuestionType;
 }
+
+const normalizeType = (raw: string | undefined | null): QuestionType => {
+  const val = (raw || "mc").toString().trim().toLowerCase();
+  const map: Record<string, QuestionType> = {
+    mc: "mc",
+    multiple_choice: "mc",
+    "multiple choice": "mc",
+    multiplechoice: "mc",
+    tf: "tf",
+    true_false: "tf",
+    "true/false": "tf",
+    "true false": "tf",
+    truefalse: "tf",
+    fib: "fib",
+    fill_in_blank: "fib",
+    fill_in_the_blank: "fib",
+    "fill in the blank": "fib",
+    fillinthblank: "fib",
+    ms: "ms",
+    multiple_select: "ms",
+    "multiple select": "ms",
+    multipleselect: "ms",
+    short: "short",
+    short_answer: "short",
+    "short answer": "short",
+    shortanswer: "short",
+    long: "long",
+    long_answer: "long",
+    "long answer": "long",
+    longanswer: "long",
+  };
+  return map[val] || "mc";
+};
 
 const createProblem = () => {
   const ops = ["*", "+", "-"];
@@ -24,7 +59,6 @@ const createProblem = () => {
   let a = 0,
     b = 0,
     ans = 0;
-
   if (op === "*") {
     a = Math.floor(Math.random() * 12) + 2;
     b = Math.floor(Math.random() * 9) + 2;
@@ -47,7 +81,10 @@ export default function ActiveExamPage() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+
   const [selectedOption, setSelectedOption] = useState("");
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+
   const [isFinished, setIsFinished] = useState(false);
   const [isTimedOut, setIsTimedOut] = useState(false);
   const [studentId, setStudentId] = useState("");
@@ -58,13 +95,12 @@ export default function ActiveExamPage() {
   const [isDetention, setIsDetention] = useState(false);
   const [detentionEndTime, setDetentionEndTime] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
-  const [examPenaltySeconds, setExamPenaltySeconds] = useState<number>(120); // Default to 120s
+  const [examPenaltySeconds, setExamPenaltySeconds] = useState<number>(120);
   const [problem, setProblem] = useState(createProblem());
   const [mathInput, setMathInput] = useState("");
 
   const [examEndTime, setExamEndTime] = useState<number | null>(null);
   const [examTimeLeft, setExamTimeLeft] = useState<number | null>(null);
-
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<string>>(
     new Set(),
   );
@@ -73,7 +109,6 @@ export default function ActiveExamPage() {
     setIsTimedOut(true);
     setIsDetention(false);
     setDetentionEndTime(null);
-
     try {
       if (studentId) {
         await supabase
@@ -85,12 +120,16 @@ export default function ActiveExamPage() {
           })
           .eq("id", studentId);
       }
-    } catch (err: unknown) {
+    } catch (err) {
       console.error("Auto-submit failed", err);
     }
   }, [studentId, questions.length]);
 
-  // 1. INITIALIZATION
+  useEffect(() => {
+    setSelectedOption("");
+    setSelectedOptions([]);
+  }, [currentIndex]);
+
   useEffect(() => {
     const startExam = async () => {
       try {
@@ -114,10 +153,8 @@ export default function ActiveExamPage() {
         if (studentData) {
           if (studentData.score) setScore(studentData.score);
           if (studentData.status === "finished") setIsFinished(true);
-          if (studentData.current_question_index !== null) {
+          if (studentData.current_question_index !== null)
             setCurrentIndex(studentData.current_question_index);
-          }
-
           if (
             studentData.detention_end_time &&
             studentData.status !== "finished"
@@ -138,26 +175,22 @@ export default function ActiveExamPage() {
 
         const { data: examData, error: examErr } = await supabase
           .from("exams")
-          .select("id, time_limit, status,penalty_seconds")
+          .select("id, time_limit, status, penalty_seconds")
           .eq("code", storedExamCode)
           .single();
 
         if (examErr || !examData) throw new Error("Could not find exam.");
 
         setExamId(examData.id);
-        const currentStatus = examData.status || "live";
-        setExamStatus(currentStatus);
+        setExamStatus(examData.status || "live");
         setExamTimeLimit(examData.time_limit);
-
-        // 🟢 Save the fetched penalty to our new state
-if (examData.penalty_seconds) {
-  setExamPenaltySeconds(examData.penalty_seconds);
-}
+        if (examData.penalty_seconds)
+          setExamPenaltySeconds(examData.penalty_seconds);
 
         if (
-          currentStatus === "live" &&
+          examData.status === "live" &&
           examData.time_limit &&
-          !studentData?.status?.includes("finished")
+          studentData?.status !== "finished"
         ) {
           const storageKey = `exam-start-${storedStudentId}`;
           let examStartTime = localStorage.getItem(storageKey);
@@ -170,55 +203,56 @@ if (examData.penalty_seconds) {
           );
         }
 
-        // 🟢 SECURE FETCH: CALL V2 (Matches the new SQL script) 🟢
-        const { data: questionsData, error: questionsErr } = await supabase.rpc(
-          "get_exam_questions_v2",
-          { p_exam_id: examData.id }, // Note the new parameter name 'p_exam_id'
-        );
+        const { data: questionsData, error: questionsErr } = await supabase
+          .from("questions")
+          .select("id, text, options, type")
+          .eq("exam_id", examData.id);
 
         if (questionsErr || !questionsData)
           throw new Error("Could not load questions.");
 
         if (questionsData && questionsData.length > 0) {
+          const normalizedData: Question[] = (questionsData as any[]).map(
+            (q) => ({
+              ...q,
+              type: normalizeType(q.type),
+            }),
+          );
+
           const savedOrder = localStorage.getItem(
             `order-${storedExamCode}-${storedName}`,
           );
           let finalQuestions: Question[] = [];
-
           if (savedOrder) {
             const orderIds = JSON.parse(savedOrder);
             const orderedQs = orderIds
-              .map((id: string) =>
-                questionsData.find((q: Question) => q.id === id),
-              )
+              .map((id: string) => normalizedData.find((q) => q.id === id))
               .filter(Boolean) as Question[];
-            const newQs = questionsData.filter(
-              (q: Question) => !orderIds.includes(q.id),
-            ) as Question[];
+            const newQs = normalizedData.filter(
+              (q) => !orderIds.includes(q.id),
+            );
             finalQuestions = [...orderedQs, ...newQs];
           } else {
-            finalQuestions = [...questionsData].sort(
+            finalQuestions = [...normalizedData].sort(
               () => Math.random() - 0.5,
-            ) as Question[];
+            );
             localStorage.setItem(
               `order-${storedExamCode}-${storedName}`,
-              JSON.stringify(finalQuestions.map((q: Question) => q.id)),
+              JSON.stringify(finalQuestions.map((q) => q.id)),
             );
           }
           setQuestions(finalQuestions);
         }
-      } catch (err: unknown) {
+      } catch (err) {
         console.error("Initialization Error:", err);
         router.push("/exam");
       } finally {
         setLoading(false);
       }
     };
-
     startExam();
   }, [router, forceSubmitExam]);
 
-  // 2. REALTIME LISTENERS
   useEffect(() => {
     if (!examId) return;
     const channel = supabase
@@ -271,12 +305,8 @@ if (examData.penalty_seconds) {
         (payload) => {
           const newStatus = payload.new.status;
           const newEndTime = payload.new.detention_end_time;
-          // 🟢 LISTEN FOR SCORE UPDATES FROM DB TRIGGER
           const newScore = payload.new.score;
-          if (newScore !== undefined && newScore !== null) {
-            setScore(newScore);
-          }
-
+          if (newScore !== undefined && newScore !== null) setScore(newScore);
           if (newStatus === "active" && !newEndTime) {
             setIsDetention(false);
             setDetentionEndTime(null);
@@ -292,7 +322,6 @@ if (examData.penalty_seconds) {
     };
   }, [studentId]);
 
-  // Timer & Detention Logic
   useEffect(() => {
     if (!examEndTime || isFinished || isTimedOut || examStatus === "waiting")
       return;
@@ -322,25 +351,25 @@ if (examData.penalty_seconds) {
       examStatus === "waiting"
     )
       return;
-const triggerDetention = async () => {
-  // 🟢 Use the dynamic state (seconds * 1000 = milliseconds)
-  const penaltyEndTime = new Date(Date.now() + (examPenaltySeconds * 1000)).toISOString(); 
-  
-  setIsDetention(true);
-  setDetentionEndTime(penaltyEndTime);
-  try {
-    await supabase
-      .from("students")
-      .update({
-        status: "detention",
-        detention_end_time: penaltyEndTime,
-        current_question_index: currentIndex,
-      })
-      .eq("id", studentId);
-  } catch (err: unknown) { // Using 'unknown' type for error catching
-    console.error("Failed to update detention", err);
-  }
-};
+    const triggerDetention = async () => {
+      const penaltyEndTime = new Date(
+        Date.now() + examPenaltySeconds * 1000,
+      ).toISOString();
+      setIsDetention(true);
+      setDetentionEndTime(penaltyEndTime);
+      try {
+        await supabase
+          .from("students")
+          .update({
+            status: "detention",
+            detention_end_time: penaltyEndTime,
+            current_question_index: currentIndex,
+          })
+          .eq("id", studentId);
+      } catch (err) {
+        console.error("Failed to update detention", err);
+      }
+    };
     const handleVisibilityChange = () => {
       if (document.hidden) triggerDetention();
     };
@@ -360,6 +389,7 @@ const triggerDetention = async () => {
     isDetention,
     examStatus,
     currentIndex,
+    examPenaltySeconds,
   ]);
 
   useEffect(() => {
@@ -400,10 +430,19 @@ const triggerDetention = async () => {
     }
   };
 
-  // 🟢 3. NEXT QUESTION (NO CLIENT GRADING) 🟢
   const handleNextQuestion = async () => {
-    if (!selectedOption) {
-      setErrorMsg("⚠️ YOU MUST SELECT AN ANSWER!");
+    const currentQ = questions[currentIndex];
+    const qType: QuestionType = currentQ.type || "mc";
+
+    const hasAnswer = (() => {
+      if (qType === "ms") return selectedOptions.length > 0;
+      if (qType === "long") return selectedOption.trim().length > 0;
+      if (qType === "short") return selectedOption.trim().length > 0;
+      return selectedOption !== "";
+    })();
+
+    if (!hasAnswer) {
+      setErrorMsg("⚠️ YOU MUST ANSWER THIS QUESTION!");
       setTimeout(() => setErrorMsg(""), 3000);
       return;
     }
@@ -413,12 +452,10 @@ const triggerDetention = async () => {
 
     try {
       const isLastQuestion = currentIndex === questions.length - 1;
-      const currentQ = questions[currentIndex];
 
       if (answeredQuestions.has(currentQ.id)) {
         if (!isLastQuestion) {
           setCurrentIndex(currentIndex + 1);
-          setSelectedOption("");
         } else {
           setIsFinished(true);
         }
@@ -426,13 +463,19 @@ const triggerDetention = async () => {
         return;
       }
 
-      const optionIndex = currentQ.options.findIndex(
-        (opt) => opt.trim() === selectedOption.trim(),
-      );
-      const studentLetter =
-        optionIndex !== -1 ? String.fromCharCode(65 + optionIndex) : "UNKNOWN";
+      let answerToSave = "";
+      if (qType === "mc") {
+        answerToSave = selectedOption.trim();
+      } else if (qType === "tf") {
+        answerToSave = selectedOption; 
+      } else if (qType === "fib") {
+        answerToSave = selectedOption.trim();
+      } else if (qType === "ms") {
+        answerToSave = selectedOptions.slice().sort().join(",");
+      } else if (qType === "short" || qType === "long") {
+        answerToSave = selectedOption.trim();
+      }
 
-      // 🟢 CHECK DB: Did we already answer this?
       const { data: existingAnswer } = await supabase
         .from("student_answers")
         .select("id")
@@ -441,7 +484,6 @@ const triggerDetention = async () => {
         .maybeSingle();
 
       if (!existingAnswer) {
-        // 🟢 SUBMIT ANSWER BLINDLY - DB WILL GRADE IT 🟢
         const { error: insertError } = await supabase
           .from("student_answers")
           .insert({
@@ -449,8 +491,10 @@ const triggerDetention = async () => {
             exam_id: examId,
             question_id: currentQ.id,
             question_text: currentQ.text,
-            selected_answer: studentLetter,
-            // NO correct_answer or is_correct here! DB Trigger handles it!
+            question_type: qType,
+            selected_answer: answerToSave,
+            // 🟢 DÜZELTME: Artık mc, tf ve ms otomatik; sadece fib, short, long öğretmene gider
+            needs_grading: ["short", "long", "fib"].includes(qType),
           });
 
         if (!insertError)
@@ -462,7 +506,6 @@ const triggerDetention = async () => {
       if (!isLastQuestion) {
         const nextIndex = currentIndex + 1;
         setCurrentIndex(nextIndex);
-        setSelectedOption("");
         await supabase
           .from("students")
           .update({ current_question_index: nextIndex })
@@ -477,7 +520,7 @@ const triggerDetention = async () => {
           })
           .eq("id", studentId);
       }
-    } catch (err: unknown) {
+    } catch (err) {
       console.error("Progress Error:", err);
     } finally {
       setIsSubmitting(false);
@@ -486,12 +529,12 @@ const triggerDetention = async () => {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-6xl uppercase border-16px border-black">
+      <div className="min-h-screen bg-[#25c0f4] flex items-center justify-center font-black text-6xl uppercase">
         Loading...
       </div>
     );
 
-  if (examStatus === "waiting") {
+  if (examStatus === "waiting")
     return (
       <div
         className="min-h-screen bg-[#FFE600] flex flex-col items-center justify-center p-6 text-center"
@@ -500,8 +543,8 @@ const triggerDetention = async () => {
           backgroundSize: "32px 32px",
         }}
       >
-        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full animate-in zoom-in duration-500">
-          <div className="size-24 bg-black text-[#FFE600] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#25c0f4] animate-spin-slow">
+        <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-10 md:p-16 max-w-2xl w-full">
+          <div className="size-24 bg-black text-[#FFE600] flex items-center justify-center mx-auto mb-6 border-4 border-black shadow-[6px_6px_0px_0px_#25c0f4]">
             <Hourglass className="w-12 h-12 stroke-[3]" />
           </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-black mb-4 leading-none">
@@ -513,12 +556,11 @@ const triggerDetention = async () => {
         </div>
       </div>
     );
-  }
 
   if (isTimedOut)
     return (
       <div
-        className="min-h-screen bg-[#25c0f4] flex flex-col items-center justify-center p-6 text-center selection:bg-black selection:text-[#25c0f4]"
+        className="min-h-screen bg-[#25c0f4] flex flex-col items-center justify-center p-6 text-center"
         style={{
           backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
           backgroundSize: "32px 32px",
@@ -549,7 +591,7 @@ const triggerDetention = async () => {
   if (isFinished)
     return (
       <div
-        className="min-h-screen bg-[#00E57A] flex flex-col items-center justify-center p-6 text-center selection:bg-black selection:text-[#00E57A]"
+        className="min-h-screen bg-[#00E57A] flex flex-col items-center justify-center p-6 text-center"
         style={{
           backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
           backgroundSize: "32px 32px",
@@ -618,21 +660,36 @@ const triggerDetention = async () => {
     );
 
   const currentQuestion = questions[currentIndex];
-  const progressPercent =
-    questions.length > 0 ? (currentIndex / questions.length) * 100 : 0;
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-  const isTimeRunningOut = examTimeLeft !== null && examTimeLeft <= 60;
-
   if (!currentQuestion)
     return (
       <div className="min-h-screen bg-[#FF6B9E] flex items-center justify-center font-black text-5xl border-[8px] border-black">
         Error loading questions.
       </div>
     );
+
+  const qType: QuestionType = currentQuestion.type || "mc";
+  const progressPercent =
+    questions.length > 0 ? (currentIndex / questions.length) * 100 : 0;
+  const formatTime = (s: number) =>
+    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+  const isTimeRunningOut = examTimeLeft !== null && examTimeLeft <= 60;
+
+  const TYPE_LABELS: Record<QuestionType, string> = {
+    mc: "Multiple Choice",
+    tf: "True / False",
+    fib: "Fill in the Blank",
+    ms: "Multiple Select",
+    short: "Short Answer",
+    long: "Long Answer",
+  };
+  const TYPE_BG: Record<QuestionType, string> = {
+    mc: "bg-[#25c0f4]",
+    tf: "bg-[#00E57A]",
+    fib: "bg-[#FFE600]",
+    ms: "bg-[#a855f7] text-white",
+    short: "bg-[#FF6B9E]",
+    long: "bg-[#5A87FF] text-white",
+  };
 
   return (
     <div
@@ -650,7 +707,6 @@ const triggerDetention = async () => {
         <div className="bg-black text-white px-3 py-1 font-black uppercase tracking-widest text-xs z-10 hidden sm:block">
           Integrity Guard
         </div>
-
         {examTimeLeft !== null && (
           <div
             className={`flex items-center justify-center gap-2 px-4 py-1 font-black uppercase tracking-widest text-lg z-10 border-[3px] border-black transition-colors ${isTimeRunningOut ? "bg-[#FF6B9E] text-black animate-pulse shadow-[2px_2px_0px_0px_#000]" : "bg-white text-black shadow-[2px_2px_0px_0px_#000]"}`}
@@ -659,7 +715,6 @@ const triggerDetention = async () => {
             {formatTime(examTimeLeft)}
           </div>
         )}
-
         <div className="font-black text-xl uppercase tracking-tighter bg-white px-3 py-1 border-[3px] border-black z-10 shadow-[2px_2px_0px_0px_#000]">
           Q: {currentIndex + 1} / {questions.length}
         </div>
@@ -673,32 +728,137 @@ const triggerDetention = async () => {
 
       <main className="w-full max-w-3xl flex flex-col gap-6 flex-grow">
         <div className="bg-white border-[4px] border-black shadow-[8px_8px_0px_0px_#000] p-6 md:p-8">
+          <div
+            className={`inline-block px-3 py-1 text-xs font-black uppercase border-2 border-black mb-4 ${TYPE_BG[qType]}`}
+          >
+            {TYPE_LABELS[qType]}
+          </div>
           <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter leading-tight text-black">
             {currentQuestion.text}
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-          {currentQuestion.options?.map((option, idx) => {
-            if (!option) return null;
-            const isSelected = selectedOption === option;
-
-            return (
-              <button
-                key={idx}
-                onClick={() => !isSubmitting && setSelectedOption(option)}
-                className={`text-left p-4 md:p-6 border-[4px] border-black text-lg md:text-xl font-black uppercase tracking-tight transition-all flex items-center ${isSelected ? "bg-black text-[#00E57A] shadow-none translate-x-1 translate-y-1" : "bg-white text-black shadow-[6px_6px_0px_0px_#000] hover:bg-gray-50"} ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <span
-                  className={`px-3 py-1 mr-4 border-[3px] font-black ${isSelected ? "bg-[#00E57A] text-black border-[#00E57A]" : "bg-black text-white border-black"}`}
+        {qType === "mc" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {currentQuestion.options?.map((option, idx) => {
+              if (!option) return null;
+              const isSelected = selectedOption === option;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => !isSubmitting && setSelectedOption(option)}
+                  className={`text-left p-4 md:p-6 border-[4px] border-black text-lg md:text-xl font-black uppercase tracking-tight transition-all flex items-center ${isSelected ? "bg-black text-[#00E57A] shadow-none translate-x-1 translate-y-1" : "bg-white text-black shadow-[6px_6px_0px_0px_#000] hover:bg-gray-50"} ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  {String.fromCharCode(65 + idx)}
-                </span>
-                <span className="leading-snug">{option}</span>
-              </button>
-            );
-          })}
-        </div>
+                  <span
+                    className={`px-3 py-1 mr-4 border-[3px] font-black ${isSelected ? "bg-[#00E57A] text-black border-[#00E57A]" : "bg-black text-white border-black"}`}
+                  >
+                    {String.fromCharCode(65 + idx)}
+                  </span>
+                  <span className="leading-snug">{option}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {qType === "tf" && (
+          <div className="grid grid-cols-2 gap-4">
+            {["TRUE", "FALSE"].map((val) => {
+              const isSelected = selectedOption === val;
+              return (
+                <button
+                  key={val}
+                  onClick={() => !isSubmitting && setSelectedOption(val)}
+                  className={`p-6 md:p-8 border-[4px] border-black text-2xl md:text-3xl font-black uppercase transition-all ${isSelected ? "bg-black text-[#00E57A] shadow-none translate-x-1 translate-y-1" : "bg-white text-black shadow-[6px_6px_0px_0px_#000] hover:bg-gray-50"} ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {val === "TRUE" ? "✓ True" : "✗ False"}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {qType === "fib" && (
+          <div className="bg-white border-[4px] border-black shadow-[8px_8px_0px_0px_#000] p-6">
+            <label className="block font-black uppercase text-sm text-black/60 mb-3">
+              Your Answer:
+            </label>
+            <input
+              type="text"
+              value={selectedOption}
+              onChange={(e) => setSelectedOption(e.target.value)}
+              placeholder="Type your answer here..."
+              disabled={isSubmitting}
+              className="w-full text-black text-2xl font-black p-4 border-[4px] border-black outline-none shadow-[4px_4px_0px_0px_#000] focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all bg-[#FFE600] placeholder:text-black/40"
+            />
+          </div>
+        )}
+
+        {qType === "ms" && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm font-black uppercase text-black/50 bg-white border-2 border-black px-3 py-1 inline-block w-fit shadow-[2px_2px_0px_0px_#000]">
+              Select all that apply
+            </p>
+            {currentQuestion.options?.map((option, idx) => {
+              if (!option) return null;
+              const isSelected = selectedOptions.includes(String(option));
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (isSubmitting) return;
+                    const opt = String(option);
+                    setSelectedOptions((prev) =>
+                      prev.includes(opt)
+                        ? prev.filter((o) => o !== opt)
+                        : [...prev, opt],
+                    );
+                  }}
+                  className={`text-left p-4 md:p-5 border-[4px] border-black text-lg font-black uppercase tracking-tight transition-all flex items-center gap-4 ${isSelected ? "bg-[#a855f7] text-white shadow-none translate-x-1 translate-y-1" : "bg-white text-black shadow-[6px_6px_0px_0px_#000] hover:bg-gray-50"} ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  <span
+                    className={`w-8 h-8 flex-shrink-0 border-[3px] flex items-center justify-center font-black text-sm ${isSelected ? "bg-white border-white text-[#a855f7]" : "bg-black border-black text-white"}`}
+                  >
+                    {isSelected ? "✓" : String.fromCharCode(65 + idx)}
+                  </span>
+                  <span className="leading-snug">{option}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {qType === "short" && (
+          <div className="bg-white border-[4px] border-black shadow-[8px_8px_0px_0px_#000] p-6">
+            <label className="block font-black uppercase text-sm text-black/60 mb-3">
+              Your Answer (1–2 sentences):
+            </label>
+            <textarea
+              value={selectedOption}
+              onChange={(e) => setSelectedOption(e.target.value)}
+              placeholder="Write a short answer..."
+              disabled={isSubmitting}
+              rows={3}
+              className="w-full text-black text-lg font-bold p-4 border-[4px] border-black outline-none shadow-[4px_4px_0px_0px_#000] focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all resize-none bg-[#FF6B9E] placeholder:text-black/40"
+            />
+          </div>
+        )}
+
+        {qType === "long" && (
+          <div className="bg-white border-[4px] border-black shadow-[8px_8px_0px_0px_#000] p-6">
+            <label className="block font-black uppercase text-sm text-black/60 mb-3">
+              Your Answer (detailed response):
+            </label>
+            <textarea
+              value={selectedOption}
+              onChange={(e) => setSelectedOption(e.target.value)}
+              placeholder="Write your detailed answer here..."
+              disabled={isSubmitting}
+              rows={6}
+              className="w-full text-black text-lg font-bold p-4 border-[4px] border-black outline-none shadow-[4px_4px_0px_0px_#000] focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all resize-none bg-[#5A87FF] text-white placeholder:text-white/50"
+            />
+          </div>
+        )}
 
         <button
           onClick={handleNextQuestion}

@@ -16,13 +16,17 @@ import {
   Clock,
 } from "lucide-react";
 
+type QuestionType = "mc" | "tf" | "fib" | "ms" | "short" | "long";
+
 interface Question {
+  type: QuestionType;
   text: string;
   options: (string | number | undefined)[];
-  answer: string | number;
+  answer: string;
 }
 
 interface ExcelQuestionRow {
+  type?: string;
   text?: string;
   option1?: string | number;
   option2?: string | number;
@@ -30,6 +34,50 @@ interface ExcelQuestionRow {
   option4?: string | number;
   answer?: string | number;
 }
+
+const TYPE_LABELS: Record<QuestionType, string> = {
+  mc: "Multiple Choice",
+  tf: "True / False",
+  fib: "Fill in the Blank",
+  ms: "Multiple Select",
+  short: "Short Answer",
+  long: "Long Answer",
+};
+
+const TYPE_COLORS: Record<QuestionType, string> = {
+  mc: "bg-[#25c0f4] text-black",
+  tf: "bg-[#00E57A] text-black",
+  fib: "bg-[#FFE600] text-black",
+  ms: "bg-[#a855f7] text-white",
+  short: "bg-[#FF6B9E] text-black",
+  long: "bg-[#5A87FF] text-white",
+};
+
+const normalizeType = (raw: string | undefined): QuestionType => {
+  const val = (raw || "mc").toString().trim().toLowerCase();
+  const map: Record<string, QuestionType> = {
+    mc: "mc",
+    multiple_choice: "mc",
+    "multiple choice": "mc",
+    tf: "tf",
+    true_false: "tf",
+    "true/false": "tf",
+    "true false": "tf",
+    fib: "fib",
+    fill_in_the_blank: "fib",
+    "fill in the blank": "fib",
+    ms: "ms",
+    multiple_select: "ms",
+    "multiple select": "ms",
+    short: "short",
+    short_answer: "short",
+    "short answer": "short",
+    long: "long",
+    long_answer: "long",
+    "long answer": "long",
+  };
+  return map[val] || "mc";
+};
 
 export default function CreateExamPage() {
   const router = useRouter();
@@ -86,14 +134,7 @@ export default function CreateExamPage() {
   const downloadTemplate = () => {
     const templateData: ExcelQuestionRow[] = [
       {
-        text: "What is 2 + 2?",
-        option1: "3",
-        option2: "4",
-        option3: "5",
-        option4: "6",
-        answer: "4",
-      },
-      {
+        type: "mc",
         text: "What is the capital of France?",
         option1: "Berlin",
         option2: "London",
@@ -101,12 +142,68 @@ export default function CreateExamPage() {
         option4: "Rome",
         answer: "Paris",
       },
+      {
+        type: "tf",
+        text: "The Earth orbits the Sun.",
+        option1: "",
+        option2: "",
+        option3: "",
+        option4: "",
+        answer: "TRUE",
+      },
+      {
+        type: "fib",
+        text: "Water boils at ___ degrees Celsius.",
+        option1: "",
+        option2: "",
+        option3: "",
+        option4: "",
+        answer: "100",
+      },
+      {
+        type: "ms",
+        text: "Which of the following are prime numbers?",
+        option1: "2",
+        option2: "4",
+        option3: "7",
+        option4: "9",
+        answer: "2,7",
+      },
+      {
+        type: "short",
+        text: "What is the process by which plants make food using sunlight?",
+        option1: "",
+        option2: "",
+        option3: "",
+        option4: "",
+        answer: "Photosynthesis",
+      },
+      {
+        type: "long",
+        text: "Explain the causes and consequences of the French Revolution.",
+        option1: "",
+        option2: "",
+        option3: "",
+        option4: "",
+        answer: "",
+      },
     ];
 
     const worksheet = XLSX.utils.json_to_sheet(templateData);
+
+    // Set column widths for readability
+    worksheet["!cols"] = [
+      { wch: 10 },
+      { wch: 50 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 20 },
+    ];
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Questions");
-
     XLSX.writeFile(workbook, "exam_template.xlsx");
   };
 
@@ -129,13 +226,22 @@ export default function CreateExamPage() {
         const data = XLSX.utils.sheet_to_json(ws);
 
         const formattedQuestions = (data as ExcelQuestionRow[])
-          .map((q) => ({
-            text: q.text ?? "",
-            options: [q.option1, q.option2, q.option3, q.option4].filter(
-              Boolean,
-            ),
-            answer: q.answer ?? "",
-          }))
+          .map((q) => {
+            const qType = normalizeType(q.type?.toString());
+            const opts = [q.option1, q.option2, q.option3, q.option4].filter(
+              (o) => o !== undefined && o !== null && o !== "",
+            );
+
+            // For tf: force options to TRUE/FALSE
+            const finalOptions = qType === "tf" ? ["TRUE", "FALSE"] : opts;
+
+            return {
+              type: qType,
+              text: q.text ?? "",
+              options: finalOptions,
+              answer: q.answer !== undefined ? String(q.answer).trim() : "",
+            };
+          })
           .filter((q) => q.text !== "");
 
         setQuestions(formattedQuestions);
@@ -211,8 +317,8 @@ export default function CreateExamPage() {
         exam_id: exam.id,
         text: q.text,
         options: q.options,
-        answer: String(q.answer),
-        type: "multiple_choice",
+        answer: q.answer,
+        type: q.type,
       }));
 
       const { error: qError } = await supabase
@@ -256,18 +362,15 @@ export default function CreateExamPage() {
     <div className="min-h-screen bg-[#f5f8f8] flex flex-col font-sans selection:bg-[#25c0f4] selection:text-black">
       <Navbar />
 
-      {/* 🟢 YETERSİZ KREDİ MODALI (Küçültüldü) */}
       {showNoCreditModal && (
         <div className="fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 max-w-sm w-full text-center flex flex-col items-center">
             <p className="text-base font-black uppercase mb-4 text-black bg-[#FFE600] px-3 py-2 border-4 border-black w-full">
               ⚠️ NO CREDITS: You need at least 1 credit.
             </p>
-
             <p className="text-lg font-black uppercase mb-6 text-black/80">
               Wanna buy some credits?
             </p>
-
             <div className="flex gap-4 w-full">
               <button
                 onClick={() => router.push("/teacher")}
@@ -294,7 +397,7 @@ export default function CreateExamPage() {
         }}
       >
         <div className="max-w-5xl mx-auto space-y-8">
-          {/* HEADER & INPUTS (Küçültüldü) */}
+          {/* HEADER & INPUTS */}
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
               <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none text-black">
@@ -357,7 +460,7 @@ export default function CreateExamPage() {
             </div>
           </div>
 
-          {/* DROPZONE (Küçültüldü) */}
+          {/* DROPZONE */}
           <div
             className="relative group"
             onDragOver={(e) => {
@@ -401,7 +504,25 @@ export default function CreateExamPage() {
             </div>
           </div>
 
-          {/* PREVIEW TABLOSU */}
+          {/* QUESTION TYPE SUMMARY */}
+          {questions.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {(Object.keys(TYPE_LABELS) as QuestionType[]).map((t) => {
+                const count = questions.filter((q) => q.type === t).length;
+                if (count === 0) return null;
+                return (
+                  <div
+                    key={t}
+                    className={`${TYPE_COLORS[t]} border-4 border-black px-4 py-2 font-black uppercase text-sm shadow-[3px_3px_0px_0px_#000]`}
+                  >
+                    {count}× {TYPE_LABELS[t]}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* PREVIEW TABLE */}
           {questions.length > 0 && (
             <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
@@ -420,13 +541,14 @@ export default function CreateExamPage() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-black text-white uppercase text-xs font-black">
+                      <th className="p-3 border-r-4 border-white/20">Type</th>
                       <th className="p-3 border-r-4 border-white/20">
                         Question Text
                       </th>
                       <th className="p-3 border-r-4 border-white/20">
                         Options
                       </th>
-                      <th className="p-3">Correct</th>
+                      <th className="p-3">Answer / Note</th>
                     </tr>
                   </thead>
                   <tbody className="text-black font-bold uppercase text-sm">
@@ -435,34 +557,73 @@ export default function CreateExamPage() {
                         key={i}
                         className="border-b-4 border-black last:border-0"
                       >
-                        <td className="p-3 border-r-4 border-black lowercase first-letter:uppercase">
+                        <td className="p-3 border-r-4 border-black">
+                          <span
+                            className={`${TYPE_COLORS[q.type]} px-2 py-1 text-xs border-2 border-black font-black whitespace-nowrap`}
+                          >
+                            {q.type.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="p-3 border-r-4 border-black lowercase first-letter:uppercase max-w-xs">
                           {q.text}
                         </td>
                         <td className="p-3 border-r-4 border-black text-xs text-black/60 italic">
-                          {q.options.join(", ")}
+                          {q.options.length > 0 ? (
+                            q.options.join(", ")
+                          ) : (
+                            <span className="text-black/30">—</span>
+                          )}
                         </td>
                         <td className="p-3">
-                          <span className="bg-[#FFD700] px-2 py-1 border-2 border-black inline-block font-black">
-                            {q.answer}
-                          </span>
+                          {q.type === "long" ? (
+                            <span className="text-black/30 italic text-xs">
+                              Manual grading
+                            </span>
+                          ) : q.type === "short" ? (
+                            <span className="bg-[#FF6B9E] px-2 py-1 border-2 border-black inline-block font-black text-xs">
+                              {q.answer || "—"}
+                            </span>
+                          ) : (
+                            <span className="bg-[#FFD700] px-2 py-1 border-2 border-black inline-block font-black">
+                              {q.answer}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {questions.length > 10 && (
+                  <div className="p-3 bg-black text-white text-center font-black uppercase text-xs">
+                    + {questions.length - 10} more questions not shown
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* HELP SECTIONS (Küçültüldü) */}
+          {/* HELP SECTIONS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-24">
             <div className="border-4 border-black bg-white p-5 shadow-[4px_4px_0px_0px_#000]">
-              <h3 className="text-xl font-black uppercase mb-2 flex items-center gap-2 text-black">
-                <History className="w-5 h-5" /> Recently Uploaded
+              <h3 className="text-xl font-black uppercase mb-3 flex items-center gap-2 text-black">
+                <History className="w-5 h-5" /> Supported Question Types
               </h3>
-              <p className="text-xs text-black/60 font-bold">
-                Your recent uploads will appear here
-              </p>
+              <div className="space-y-2">
+                {(Object.entries(TYPE_LABELS) as [QuestionType, string][]).map(
+                  ([t, label]) => (
+                    <div key={t} className="flex items-center gap-2">
+                      <span
+                        className={`${TYPE_COLORS[t]} px-2 py-0.5 text-xs border-2 border-black font-black`}
+                      >
+                        {t.toUpperCase()}
+                      </span>
+                      <span className="text-xs font-bold text-black/70 uppercase">
+                        {label}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
             </div>
 
             <div className="border-4 border-black bg-[#25c0f4] p-5 shadow-[4px_4px_0px_0px_#000] flex flex-col justify-center items-center text-center">
@@ -470,22 +631,24 @@ export default function CreateExamPage() {
               <h3 className="text-xl font-black uppercase text-black mb-2">
                 Need Help?
               </h3>
+              <p className="font-bold uppercase text-black/80 text-xs mb-1">
+                Required columns: <strong>type</strong>, text, answer
+              </p>
               <p className="font-bold uppercase text-black/80 text-xs mb-3">
-                Headers needed: text, option1, option2, option3, option4,
-                answer.
+                Optional: option1, option2, option3, option4
               </p>
               <button
                 onClick={downloadTemplate}
                 className="flex items-center gap-2 underline decoration-2 font-black uppercase text-black text-sm hover:text-white transition-colors"
               >
-                <Download className="w-4 h-4" /> Download Template
+                <Download className="w-4 h-4" /> Download Template (All Types)
               </button>
             </div>
           </div>
         </div>
       </main>
 
-      {/* FOOTER ACTION BAR (Küçültüldü) */}
+      {/* FOOTER ACTION BAR */}
       <footer className="sticky bottom-0 bg-white border-t-[6px] border-black p-4 md:px-8 flex items-center justify-between z-50">
         <div className="hidden md:flex items-center gap-2">
           <HelpCircle className="w-4 h-4 text-black" />

@@ -1,21 +1,12 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react"; // 🟢 Suspense eklendi
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../utils/Supabase/client";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import {
-  Trash2,
-  AlertTriangle,
-  Download,
-  Monitor,
-  Plus,
-  Clock,
-  CheckCircle,
-  Zap,
-} from "lucide-react";
+import { Trash2, Download, Plus, Clock, CheckCircle, Zap } from "lucide-react";
 import * as XLSX from "xlsx";
 
 const rowColors = ["bg-[#FF6B9E]", "bg-[#5A87FF]", "bg-[#FFE600]", "bg-white"];
@@ -29,7 +20,6 @@ type Exam = {
   created_at: string;
 };
 
-// 🟢 Asıl içeriğimizi bir alt bileşen (DashboardContent) haline getirdik
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -224,6 +214,13 @@ function DashboardContent() {
           >
             Exam
           </Link>
+          
+              <Link
+            href="/teacher/edit"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
+          >
+            Exam Edit
+          </Link>
           <Link
             href="#"
             className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 pointer-events-none"
@@ -303,10 +300,10 @@ function DashboardContent() {
                 return (
                   <div
                     key={exam.id}
-                    className={`${colorClass} border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 flex flex-col md:flex-row justify-between items-center gap-6 hover:translate-x-1 transition-all`}
+                    className={`${colorClass} border-[6px] border-black shadow-[8px_8px_0px_0px_#000] p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:translate-x-1 transition-all`}
                   >
-                    <div className="flex-1">
-                      <h2 className="text-3xl md:text-4xl font-black text-black uppercase tracking-tighter mb-3">
+                    <div className="flex-1 w-full">
+                      <h2 className="text-3xl md:text-4xl font-black text-black uppercase tracking-tighter mb-3 truncate">
                         {exam.title || "Untitled"}
                       </h2>
                       <div className="flex flex-wrap items-center gap-3 font-black uppercase text-sm text-black">
@@ -321,26 +318,36 @@ function DashboardContent() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+
+                    {/* 🟢 ACTION BUTONLARI: İNDİR, SİL, İZLE, PUANLA */}
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
                       <button
                         onClick={(e) =>
                           handleDownloadResults(e, exam.code, exam.title)
                         }
-                        className="bg-white text-black border-4 border-black p-4 shadow-[4px_4px_0px_0px_#000] hover:bg-[#a855f7] hover:text-white transition-all group/btn"
+                        className="bg-white text-black border-4 border-black p-4 shadow-[4px_4px_0px_0px_#000] hover:bg-[#a855f7] hover:text-white transition-all group/btn flex-none"
+                        title="Quick Download"
                       >
                         <Download className="w-7 h-7 stroke-[3] group-hover/btn:animate-bounce" />
                       </button>
                       <button
                         onClick={(e) => handleDelete(e, exam.id)}
-                        className="bg-white text-black border-4 border-black p-4 shadow-[4px_4px_0px_0px_#000] hover:bg-black hover:text-[#FF6B9E] transition-all"
+                        className="bg-white text-black border-4 border-black p-4 shadow-[4px_4px_0px_0px_#000] hover:bg-black hover:text-[#FF6B9E] transition-all flex-none"
+                        title="Delete Exam"
                       >
                         <Trash2 className="w-7 h-7 stroke-[3]" />
                       </button>
                       <Link
                         href={`/teacher/monitor/${exam.code}`}
-                        className="bg-black text-white px-6 py-4 font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:bg-[#00E57A] hover:text-black transition-all"
+                        className="flex-1 lg:flex-none text-center bg-black text-white px-6 py-4 font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:bg-[#00E57A] hover:text-black transition-all"
                       >
                         Monitor
+                      </Link>
+                      <Link
+                        href={`/teacher/grade/${exam.code}`}
+                        className="flex-1 lg:flex-none text-center bg-white text-black px-6 py-4 font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:bg-[#5A87FF] hover:text-white transition-all"
+                      >
+                        Grade
                       </Link>
                     </div>
                   </div>
@@ -354,8 +361,6 @@ function DashboardContent() {
   );
 }
 
-// 🟢 Sayfanın Ana Çıktısı: İçeriği <Suspense> içine alıyoruz.
-// Vercel build esnasında hata vermesi bu sayede %100 engelleniyor.
 export default function TeacherDashboard() {
   return (
     <div

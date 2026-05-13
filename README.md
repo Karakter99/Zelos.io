@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Zelos: Neo-Brutalist Exam Management Platform 🚀
 
-## Getting Started
+**Zelos** is a full-stack, real-time exam creation, monitoring, and grading platform designed for educators who prioritize speed, integrity, and bold design. Moving away from clunky legacy systems, Zelos offers a striking Neo-Brutalist UI combined with a powerful backend to handle the end-to-end examination workflow.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## ✨ Key Modules
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 📝 1. Rapid Exam Creation & Management
+* **Batch Uploads:** Import hundreds of questions in seconds using `.xlsx` or `.csv` templates.
+* **Weighted Grading:** Assign custom point values to each question directly in the spreadsheet or through the centralized Edit Hub.
+* **Flexible Templates:** Supports Multiple Choice (MC), True/False (TF), Fill-in-the-Blank (FIB), Multiple Select (MS), Short Answer, and Long Answer.
+* **Duplicate & Iterate:** Clone existing exams with one click to create different versions for different classes.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 🛡️ 2. Live Integrity Guard (Real-Time Radar)
+* **Cheat Detection:** Real-time monitoring flags students who switch tabs, exit full-screen, or lose window focus.
+* **Remote Controls:** Teachers can force-lock suspicious students, assign detentions, or remotely "forgive" and unlock screens.
+* **Live Progress Tracking:** See exactly which question every student is currently on and their live completion percentage.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### ⚖️ 3. Smart Hybrid Grading Hub
+* **Automated Evaluation:** Objective questions (MC, TF, MS) are graded instantly using database triggers.
+* **Partial Credit Logic:** MS questions automatically calculate scores based on the ratio of correct selections.
+* **Manual Grading Interface:** A streamlined UI for teachers to quickly review open-ended answers and assign Full, Zero, or Custom Partial credits.
 
-## Learn More
+### 📊 4. Centralized Results & Analytics
+* **Performance Hub:** A dedicated dashboard to view class averages, individual student papers, and cheating flags.
+* **Detailed Insights:** Drill down into specific student answers to identify common misconceptions.
+* **One-Click Export:** Download comprehensive class results as professional `.xlsx` files.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🛠️ Tech Stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+* **Frontend:** Next.js 14, React, TypeScript, Tailwind CSS.
+* **UI Architecture:** Custom Neo-Brutalist components (high-contrast, 8px hard shadows, rigid borders).
+* **Backend & DB:** Supabase (PostgreSQL) with Realtime WebSocket subscriptions for live monitoring.
+* **Logic:** PL/pgSQL Database Triggers for automated scoring and state management.
+* **Payments:** Stripe API (Credit-based "Pay-per-Exam" model).
+* **Data Processing:** SheetJS (`xlsx`) for spreadsheet parsing and result generation.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🚀 Getting Started
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Prerequisites
+* Node.js 18+ 
+* Supabase Account
+* Stripe Account (for credits)
+
+### Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/yourusername/zelos.git
+    cd zelos
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+3.  **Setup Environment Variables:**
+    Create a `.env.local` file and add your credentials:
+    ```env
+    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+    STRIPE_SECRET_KEY=your_stripe_secret
+    ```
+
+4.  **Database Setup:**
+    Run the SQL migrations provided in the `/supabase/migrations` folder to set up tables, triggers, and RLS policies.
+
+5.  **Run the development server:**
+    ```bash
+    npm run dev
+    ```
+
+---
+
+## 🎨 UI Philosophy
+Zelos utilizes **Neo-Brutalism**. It rejects the soft, blurry shadows of modern web design in favor of:
+* **Bold Typography:** Heavy weights and all-caps headings.
+* **High Contrast:** Pure black (#000) borders and vibrant, saturated primary colors.
+* **Hard Shadows:** Consistent 4px to 12px offsets for a "stacked" physical feel.
+* **Grid Backgrounds:** Radial and linear dot patterns for a technical, blueprint-like aesthetic.
+
+---
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

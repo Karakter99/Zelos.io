@@ -209,10 +209,10 @@ function DashboardContent() {
             Dashboard
           </Link>
           <Link
-            href="/teacher/new"
+            href="/teacher/grade"
             className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
           >
-            Exam
+            Grade
           </Link>
           
               <Link
@@ -220,6 +220,12 @@ function DashboardContent() {
             className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
           >
             Exam Edit
+          </Link>
+                     <Link
+            href="/teacher/results"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
+          >
+            Results
           </Link>
           <Link
             href="#"

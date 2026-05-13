@@ -23,6 +23,7 @@ interface Question {
   text: string;
   options: (string | number | undefined)[];
   answer: string;
+  points: number; // 🟢 YENİ: PUAN ÖZELLİĞİ EKLENDİ
 }
 
 interface ExcelQuestionRow {
@@ -33,6 +34,7 @@ interface ExcelQuestionRow {
   option3?: string | number;
   option4?: string | number;
   answer?: string | number;
+  points?: string | number; // 🟢 YENİ: EXCEL'DEN GELECEK PUAN
 }
 
 const TYPE_LABELS: Record<QuestionType, string> = {
@@ -131,6 +133,7 @@ export default function CreateExamPage() {
     }
   };
 
+  // 🟢 YENİ: İndirilen şablona "points" (puan) sütunu eklendi
   const downloadTemplate = () => {
     const templateData: ExcelQuestionRow[] = [
       {
@@ -141,6 +144,7 @@ export default function CreateExamPage() {
         option3: "Paris",
         option4: "Rome",
         answer: "Paris",
+        points: 10,
       },
       {
         type: "tf",
@@ -150,6 +154,7 @@ export default function CreateExamPage() {
         option3: "",
         option4: "",
         answer: "TRUE",
+        points: 5,
       },
       {
         type: "fib",
@@ -159,6 +164,7 @@ export default function CreateExamPage() {
         option3: "",
         option4: "",
         answer: "100",
+        points: 15,
       },
       {
         type: "ms",
@@ -168,6 +174,7 @@ export default function CreateExamPage() {
         option3: "7",
         option4: "9",
         answer: "2,7",
+        points: 20,
       },
       {
         type: "short",
@@ -177,6 +184,7 @@ export default function CreateExamPage() {
         option3: "",
         option4: "",
         answer: "Photosynthesis",
+        points: 20,
       },
       {
         type: "long",
@@ -186,12 +194,13 @@ export default function CreateExamPage() {
         option3: "",
         option4: "",
         answer: "",
+        points: 30,
       },
     ];
 
     const worksheet = XLSX.utils.json_to_sheet(templateData);
 
-    // Set column widths for readability
+    // Sütun genişlikleri (Yeni points sütununu da ekledik)
     worksheet["!cols"] = [
       { wch: 10 },
       { wch: 50 },
@@ -200,6 +209,7 @@ export default function CreateExamPage() {
       { wch: 15 },
       { wch: 15 },
       { wch: 20 },
+      { wch: 10 }, // points column
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -232,7 +242,6 @@ export default function CreateExamPage() {
               (o) => o !== undefined && o !== null && o !== "",
             );
 
-            // For tf: force options to TRUE/FALSE
             const finalOptions = qType === "tf" ? ["TRUE", "FALSE"] : opts;
 
             return {
@@ -240,6 +249,8 @@ export default function CreateExamPage() {
               text: q.text ?? "",
               options: finalOptions,
               answer: q.answer !== undefined ? String(q.answer).trim() : "",
+              // 🟢 YENİ: Excelden puanı oku, boşsa 10 yap
+              points: Number(q.points) || 10, 
             };
           })
           .filter((q) => q.text !== "");
@@ -313,12 +324,14 @@ export default function CreateExamPage() {
         throw new Error("Exam created, but Supabase did not return the ID.");
       }
 
+      // 🟢 YENİ: questions payload'una points değerini de ekledik
       const questionPayload = questions.map((q) => ({
         exam_id: exam.id,
         text: q.text,
         options: q.options,
         answer: q.answer,
         type: q.type,
+        points: q.points,
       }));
 
       const { error: qError } = await supabase
@@ -480,7 +493,7 @@ export default function CreateExamPage() {
             >
               <input
                 type="file"
-                accept=".xlsx, .xls"
+                accept=".xlsx, .xls, .csv"
                 className="absolute inset-0 opacity-0 cursor-pointer"
                 onChange={handleFileUpload}
               />
@@ -496,7 +509,7 @@ export default function CreateExamPage() {
               <h2 className="text-2xl md:text-3xl font-black uppercase text-black mb-2">
                 {questions.length > 0
                   ? `${questions.length} QUESTIONS LOADED`
-                  : "Drag & Drop .XLSX"}
+                  : "Drag & Drop .XLSX / .CSV"}
               </h2>
               <p className="text-base md:text-lg font-bold text-black/60 uppercase max-w-sm">
                 Or click to browse your computer
@@ -529,12 +542,17 @@ export default function CreateExamPage() {
                 <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-black flex items-center gap-2">
                   <Eye className="w-8 h-8" /> Preview
                 </h2>
-                <button
-                  onClick={() => setQuestions([])}
-                  className="bg-black text-[#FFD700] px-4 py-1 text-sm font-black uppercase hover:bg-red-500 transition-colors"
-                >
-                  Clear All
-                </button>
+                <div className="flex items-center gap-4">
+                  <span className="bg-black text-white px-3 py-1 font-black text-sm uppercase shadow-[4px_4px_0px_0px_#00E57A]">
+                    Total: {questions.reduce((sum, q) => sum + (q.points || 10), 0)} PTS
+                  </span>
+                  <button
+                    onClick={() => setQuestions([])}
+                    className="bg-white text-black px-4 py-1 text-sm font-black uppercase border-4 border-black hover:bg-[#FF6B9E] transition-colors"
+                  >
+                    Clear All
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto border-4 border-black shadow-[6px_6px_0px_0px_#000] bg-white">
@@ -545,6 +563,7 @@ export default function CreateExamPage() {
                       <th className="p-3 border-r-4 border-white/20">
                         Question Text
                       </th>
+                      <th className="p-3 border-r-4 border-white/20">PTS</th>
                       <th className="p-3 border-r-4 border-white/20">
                         Options
                       </th>
@@ -567,6 +586,10 @@ export default function CreateExamPage() {
                         <td className="p-3 border-r-4 border-black lowercase first-letter:uppercase max-w-xs">
                           {q.text}
                         </td>
+                        {/* 🟢 YENİ: Puan Gösterimi */}
+                        <td className="p-3 border-r-4 border-black font-black text-center bg-[#FFE600]">
+                          {q.points}
+                        </td>
                         <td className="p-3 border-r-4 border-black text-xs text-black/60 italic">
                           {q.options.length > 0 ? (
                             q.options.join(", ")
@@ -584,7 +607,7 @@ export default function CreateExamPage() {
                               {q.answer || "—"}
                             </span>
                           ) : (
-                            <span className="bg-[#FFD700] px-2 py-1 border-2 border-black inline-block font-black">
+                            <span className="bg-[#00E57A] px-2 py-1 border-2 border-black inline-block font-black">
                               {q.answer}
                             </span>
                           )}
@@ -632,7 +655,7 @@ export default function CreateExamPage() {
                 Need Help?
               </h3>
               <p className="font-bold uppercase text-black/80 text-xs mb-1">
-                Required columns: <strong>type</strong>, text, answer
+                Required columns: <strong>type</strong>, text, answer, <strong>points</strong>
               </p>
               <p className="font-bold uppercase text-black/80 text-xs mb-3">
                 Optional: option1, option2, option3, option4
@@ -641,7 +664,7 @@ export default function CreateExamPage() {
                 onClick={downloadTemplate}
                 className="flex items-center gap-2 underline decoration-2 font-black uppercase text-black text-sm hover:text-white transition-colors"
               >
-                <Download className="w-4 h-4" /> Download Template (All Types)
+                <Download className="w-4 h-4" /> Download Template
               </button>
             </div>
           </div>

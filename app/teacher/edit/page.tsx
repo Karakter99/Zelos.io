@@ -15,10 +15,15 @@ import {
   Clock,
   BookOpen,
   Plus,
-  Copy // 🟢 Kopyalama ikonu eklendi
+  Copy,
+  Image as ImageIcon,
+  Video,
+  X,
+  UploadCloud
 } from "lucide-react";
 
 type QuestionType = "mc" | "tf" | "fib" | "ms" | "short" | "long";
+type MediaType = "image" | "video" | "none"; // 🟢 MEDYA TİPİ EKLENDİ
 
 interface Exam {
   id: string;
@@ -37,6 +42,8 @@ interface Question {
   options: string[];
   answer: string;
   points?: number;
+  media_url?: string; // 🟢 URL EKLENDİ
+  media_type?: MediaType; // 🟢 TİP EKLENDİ
 }
 
 const TYPE_LABELS: Record<QuestionType, string> = {
@@ -69,6 +76,7 @@ function EditContent() {
   const [loadingExams, setLoadingExams] = useState(true);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // 🟢 YÜKLEME DURUMU
   
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
@@ -103,7 +111,7 @@ function EditContent() {
         const targetExam = examsData.find(e => e.code === codeParam);
         if (targetExam) handleSelectExam(targetExam);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
     } finally {
       setLoadingExams(false);
@@ -121,7 +129,7 @@ function EditContent() {
         .order("created_at", { ascending: true });
         
       setQuestions(qData || []);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Sorular yüklenirken hata:", err);
     } finally {
       setLoadingQuestions(false);
@@ -143,7 +151,7 @@ function EditContent() {
         
       setExams(prev => prev.map(e => e.id === selectedExam.id ? selectedExam : e));
       alert("✅ Exam settings saved!");
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       alert("Failed to save exam settings.");
     } finally {
@@ -151,7 +159,7 @@ function EditContent() {
     }
   };
 
-  // 🟢 YENİ EKLENDİ: Sınavı Tamamen Silme Fonksiyonu
+  // Sınavı Silme (Geri Getirildi)
   const handleDeleteExam = async () => {
     if (!selectedExam) return;
     if (!confirm(`Are you sure you want to PERMANENTLY delete "${selectedExam.title}"?\n\nAll questions and student results will be erased!`)) return;
@@ -164,9 +172,9 @@ function EditContent() {
       setExams(prev => prev.filter(e => e.id !== selectedExam.id));
       setSelectedExam(null);
       setQuestions([]);
-      router.replace("/teacher/edit"); // URL'yi temizle
+      router.replace("/teacher/edit");
       alert("🗑️ Exam deleted successfully.");
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       alert("Failed to delete exam.");
     } finally {
@@ -174,7 +182,7 @@ function EditContent() {
     }
   };
 
-  // 🟢 YENİ EKLENDİ: Sınavı Kopyalama (Duplicate) Fonksiyonu
+  // Sınavı Kopyalama (Geri Getirildi)
   const handleDuplicateExam = async () => {
     if (!selectedExam) return;
     if (!confirm("Are you sure you want to DUPLICATE this exam? It will cost 1 credit.")) return;
@@ -184,7 +192,6 @@ function EditContent() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
 
-      // 1. Krediyi kontrol et
       const { data: profile } = await supabase.from("teacher_profiles").select("credits").eq("id", user.id).single();
       if (!profile || profile.credits < 1) {
         alert("❌ Not enough credits to duplicate this exam.");
@@ -192,10 +199,8 @@ function EditContent() {
         return;
       }
 
-      // 2. Krediyi düş
       await supabase.from("teacher_profiles").update({ credits: profile.credits - 1 }).eq("id", user.id);
 
-      // 3. Yeni sınav kodu oluştur ve Sınavı kaydet
       const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       const { data: newExam, error: examErr } = await supabase
         .from("exams")
@@ -212,7 +217,6 @@ function EditContent() {
 
       if (examErr) throw examErr;
 
-      // 4. Soruları da yeni sınava bağlayarak kaydet
       if (questions.length > 0) {
         const newQuestions = questions.map(q => ({
           exam_id: newExam.id,
@@ -220,17 +224,18 @@ function EditContent() {
           type: q.type,
           options: q.options,
           answer: q.answer,
-          points: q.points || 10
+          points: q.points || 10,
+          media_url: q.media_url,
+          media_type: q.media_type
         }));
         const { error: qErr } = await supabase.from("questions").insert(newQuestions);
         if (qErr) throw qErr;
       }
 
-      // 5. Ekranı yeni sınavla güncelle
       setExams(prev => [newExam, ...prev]);
       handleSelectExam(newExam); 
       alert(`✅ Exam duplicated successfully!\nNew Code: ${newCode}`);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       alert("Failed to duplicate exam.");
     } finally {
@@ -243,84 +248,234 @@ function EditContent() {
     try {
       await supabase.from("questions").delete().eq("id", id);
       setQuestions(prev => prev.filter(q => q.id !== id));
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       alert("Failed to delete question.");
     }
   };
 
+  // 🟢 YENİ EKLENDİ: Medya Yükleme Fonksiyonu
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editQ) return;
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${selectedExam?.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('question-media')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('question-media')
+        .getPublicUrl(filePath);
+
+      setEditQ({ ...editQ, media_url: publicUrl, media_type: 'image' });
+    } catch (error: unknown) {
+      console.error('Error uploading image:', error);
+      alert('Upload failed!');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Soru Kaydetme (Medya URL ve Tip ile güncellendi)
   const handleSaveQuestion = async () => {
     if (!editQ || !selectedExam) return;
     try {
+      const payload = {
+        exam_id: selectedExam.id,
+        text: editQ.text,
+        type: editQ.type,
+        options: editQ.options,
+        answer: editQ.answer,
+        points: editQ.points || 10,
+        media_url: editQ.media_url,
+        media_type: editQ.media_type
+      };
+
       if (editQ.id === "") {
-        const { data, error } = await supabase.from("questions").insert([{
-            exam_id: selectedExam.id, text: editQ.text, type: editQ.type, options: editQ.options, answer: editQ.answer, points: editQ.points || 10
-          }]).select().single();
+        const { data, error } = await supabase.from("questions").insert([payload]).select().single();
         if (error) throw error;
         setQuestions(prev => [...prev, data]);
       } else {
-        const { data, error } = await supabase.from("questions").update({
-            text: editQ.text, type: editQ.type, options: editQ.options, answer: editQ.answer, points: editQ.points || 10
-          }).eq("id", editQ.id).select().single();
+        const { data, error } = await supabase.from("questions").update(payload).eq("id", editQ.id).select().single();
         if (error) throw error;
         setQuestions(prev => prev.map(q => q.id === editQ.id ? data : q));
       }
       setEditQ(null); 
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       alert("Failed to save question.");
     }
   };
 
-  if (loadingExams) return <div className="min-h-screen bg-[#FFE600] flex items-center justify-center font-black text-4xl uppercase">Loading Editor...</div>;
+  if (loadingExams) {
+    return <div className="min-h-screen bg-[#FFE600] flex items-center justify-center font-black text-4xl uppercase">Loading Editor...</div>;
+  }
 
   return (
-    <div className="min-h-screen flex flex-col font-sans selection:bg-black selection:text-white bg-[#FFE600]" style={{ backgroundImage: "radial-gradient(#000 1.5px, transparent 1.5px)", backgroundSize: "30px 30px", backgroundAttachment: "fixed" }}>
+    <div className="min-h-screen flex flex-col font-sans selection:bg-black selection:text-white bg-[#FFE600]"
+         style={{ backgroundImage: "radial-gradient(#000 1.5px, transparent 1.5px)", backgroundSize: "30px 30px", backgroundAttachment: "fixed" }}>
       <Navbar />
       
-      {/* SORU DÜZENLEME MODALI */}
+      {/* 🟢 SORU DÜZENLEME / EKLEME MODALI (Genişletildi ve İki Sütuna Ayrıldı) */}
       {editQ && (
         <div className="fixed inset-0 bg-black/80 z-[500] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-[#FFE600] border-[6px] border-black shadow-[12px_12px_0px_0px_#25c0f4] p-0 max-w-3xl w-full my-auto overflow-hidden">
+          <div className="bg-[#FFE600] border-[6px] border-black shadow-[12px_12px_0px_0px_#25c0f4] p-0 max-w-4xl w-full my-auto overflow-hidden">
             <div className="bg-black text-white flex justify-between items-center p-6 border-b-[6px] border-black">
               <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">
                 {editQ.id === "" ? "Add New Question" : "Edit Question"}
               </h2>
-              <button onClick={() => setEditQ(null)} className="bg-white text-black px-4 py-2 font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_#FF6B9E] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">Close</button>
+              <button onClick={() => setEditQ(null)} className="bg-white text-black px-4 py-2 font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_#FF6B9E] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
+                Close
+              </button>
             </div>
-            <div className="p-6 md:p-8 space-y-6">
-              <div>
-                <label className="block text-sm font-black uppercase mb-2 text-black">Question Text</label>
-                <textarea value={editQ.text} onChange={e => setEditQ({...editQ, text: e.target.value})} className="w-full border-4 border-black p-4 text-xl font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all resize-none bg-white" rows={3} />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* SOL SÜTUN: Temel Soru Ayarları */}
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-black uppercase mb-2 text-black">Type</label>
-                  <select value={editQ.type} onChange={e => setEditQ({...editQ, type: e.target.value as QuestionType})} className="w-full border-4 border-black p-4 font-black text-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none bg-white cursor-pointer focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all">
-                    {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
+                  <label className="block text-sm font-black uppercase mb-2 text-black">Question Text</label>
+                  <textarea 
+                    value={editQ.text} 
+                    onChange={e => setEditQ({...editQ, text: e.target.value})}
+                    className="w-full border-4 border-black p-4 text-xl font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all resize-none bg-white"
+                    rows={4}
+                  />
                 </div>
-                <div>
-                  <label className="block text-sm font-black uppercase mb-2 text-black">Correct Answer</label>
-                  <input type="text" value={editQ.answer} onChange={e => setEditQ({...editQ, answer: e.target.value})} placeholder={editQ.type === 'tf' ? 'TRUE / FALSE' : 'e.g. Paris'} className="w-full border-4 border-black p-4 font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none bg-[#00E57A]/20 focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
-                </div>
-                <div>
-                  <label className="block text-sm font-black uppercase mb-2 text-black text-right">Points</label>
-                  <input type="number" value={editQ.points || 10} onChange={e => setEditQ({...editQ, points: Number(e.target.value)})} className="w-full border-4 border-black p-4 font-black text-black text-right text-2xl shadow-[6px_6px_0px_0px_#000] outline-none bg-[#FF6B9E]/20 focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
-                </div>
-              </div>
-              {(editQ.type === 'mc' || editQ.type === 'ms') && (
-                <div className="bg-white p-6 border-4 border-black shadow-[6px_6px_0px_0px_#000]">
-                  <label className="block text-sm font-black text-black uppercase mb-4">Options (A, B, C, D)</label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[0, 1, 2, 3].map(i => (
-                      <input key={i} type="text" value={editQ.options[i] || ""} onChange={e => { const newOpts = [...(editQ.options || [])]; newOpts[i] = e.target.value; setEditQ({...editQ, options: newOpts}); }} placeholder={`Option ${i+1}`} className="w-full border-[3px] border-black p-3 font-bold text-black outline-none focus:bg-[#25c0f4]/10 transition-all" />
-                    ))}
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-black uppercase mb-2 text-black">Type</label>
+                    <select 
+                      value={editQ.type}
+                      onChange={e => setEditQ({...editQ, type: e.target.value as QuestionType})}
+                      className="w-full border-4 border-black p-4 font-black text-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none bg-white cursor-pointer focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                    >
+                      {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-black uppercase mb-2 text-black">Points</label>
+                    <input 
+                      type="number" 
+                      value={editQ.points || 10}
+                      onChange={e => setEditQ({...editQ, points: Number(e.target.value)})}
+                      className="w-full border-4 border-black p-4 font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none bg-white focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                    />
                   </div>
                 </div>
-              )}
-              <button onClick={handleSaveQuestion} className="w-full bg-[#00E57A] text-black border-4 border-black p-5 font-black uppercase text-2xl shadow-[8px_8px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#000] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3 mt-4">
-                <Save className="w-8 h-8 stroke-[3]" /> {editQ.id === "" ? "Add Question" : "Save Updates"}
+
+                <div>
+                  <label className="block text-sm font-black uppercase mb-2 text-black">Correct Answer</label>
+                  <input 
+                    type="text" 
+                    value={editQ.answer}
+                    onChange={e => setEditQ({...editQ, answer: e.target.value})}
+                    placeholder={editQ.type === 'tf' ? 'TRUE / FALSE' : 'e.g. Paris'}
+                    className="w-full border-4 border-black p-4 font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none bg-[#00E57A]/20 focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* 🟢 SAĞ SÜTUN: Medya Yükleme ve Seçenekler */}
+              <div className="space-y-6">
+                
+                {/* MEDYA ALANI */}
+                <div className="bg-white border-[4px] border-black shadow-[6px_6px_0px_0px_#a855f7] p-5">
+                  <label className="block text-xs font-black uppercase mb-4 text-black flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" /> Visual Support (Optional)
+                  </label>
+
+                  {!editQ.media_url ? (
+                    <div className="space-y-4">
+                      {/* Resim Yükleme Dropzone */}
+                      <label className={`border-4 border-dashed border-black p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-[#FFE600] transition-colors ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleMediaUpload} />
+                        <UploadCloud className="w-10 h-10 mb-2 text-black" />
+                        <p className="font-black uppercase text-xs text-black">
+                          {isUploading ? 'Uploading...' : 'Upload Image'}
+                        </p>
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <div className="h-[4px] bg-black grow"></div>
+                        <span className="font-black text-[12px] uppercase text-black">OR</span>
+                        <div className="h-[4px] bg-black grow"></div>
+                      </div>
+
+                      {/* YouTube Linki */}
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="YouTube Video URL" 
+                          className="grow border-4 border-black p-3 text-sm font-black outline-none focus:bg-[#25c0f4]/10 transition-colors"
+                          onBlur={(e) => {
+                            if(e.target.value) setEditQ({...editQ, media_url: e.target.value, media_type: 'video'})
+                          }}
+                        />
+                        <button className="bg-black text-[#00E57A] px-4 py-2 font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_#00E57A] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">Add</button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Yüklü Medya Önizlemesi */
+                    <div className="relative group">
+                      {editQ.media_type === 'image' ? (
+                        <img src={editQ.media_url} alt="Question Media" className="w-full h-48 object-contain border-4 border-black bg-[#f5f8f8]" />
+                      ) : (
+                        <div className="aspect-video bg-black flex items-center justify-center border-4 border-black">
+                          <Video className="w-12 h-12 text-[#FF6B9E]" />
+                        </div>
+                      )}
+                      <button 
+                        onClick={() => setEditQ({...editQ, media_url: '', media_type: 'none'})}
+                        className="absolute -top-4 -right-4 bg-[#FF6B9E] text-black p-2 border-4 border-black shadow-[4px_4px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
+                      >
+                        <X className="w-5 h-5 stroke-[3]" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Soru Seçenekleri (MC/MS) */}
+                {(editQ.type === 'mc' || editQ.type === 'ms') && (
+                  <div className="bg-white p-5 border-4 border-black shadow-[6px_6px_0px_0px_#000]">
+                    <label className="block text-xs font-black text-black uppercase mb-4">Options (A, B, C, D)</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[0, 1, 2, 3].map(i => (
+                        <input 
+                          key={i}
+                          type="text"
+                          value={editQ.options[i] || ""}
+                          onChange={e => {
+                            const newOpts = [...(editQ.options || [])];
+                            newOpts[i] = e.target.value;
+                            setEditQ({...editQ, options: newOpts});
+                          }}
+                          placeholder={`Option ${i+1}`}
+                          className="w-full border-[4px] border-black p-3 font-black text-sm text-black outline-none focus:bg-[#25c0f4]/10 transition-all"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Kaydet Butonu */}
+            <div className="p-6 bg-black flex justify-end border-t-[6px] border-black">
+              <button 
+                onClick={handleSaveQuestion}
+                className="w-full bg-[#00E57A] text-black border-4 border-black p-5 font-black uppercase text-2xl shadow-[8px_8px_0px_0px_#25c0f4] hover:translate-x-1 hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_#25c0f4] active:translate-x-2 active:translate-y-2 active:shadow-none transition-all flex items-center justify-center gap-3"
+              >
+                <Save className="w-8 h-8 stroke-[3]" /> {editQ.id === "" ? "Create Question" : "Save Updates"}
               </button>
             </div>
           </div>
@@ -334,14 +489,25 @@ function EditContent() {
           <button onClick={() => router.push("/teacher")} className="flex items-center gap-2 font-black uppercase text-sm mb-6 hover:translate-x-1 transition-transform bg-black text-white px-4 py-2 border-2 border-black shadow-[4px_4px_0px_0px_#25c0f4]">
             <ArrowLeft className="w-5 h-5 stroke-[3]" /> Dashboard
           </button>
+          
           <h2 className="text-4xl font-black text-black uppercase tracking-tighter mb-6 pb-2 border-b-4 border-black">Edit Center</h2>
           
           {exams.length === 0 ? (
-            <div className="p-4 border-4 border-black bg-[#FFE600] font-black uppercase text-black text-center">No exams found.</div>
+            <div className="p-4 border-4 border-black bg-[#FFE600] font-black uppercase text-black text-center">
+              No exams found.
+            </div>
           ) : (
             <div className="space-y-4">
               {exams.map(exam => (
-                <button key={exam.id} onClick={() => handleSelectExam(exam)} className={`w-full p-5 border-[4px] border-black text-left flex flex-col transition-all shadow-[6px_6px_0px_0px_#000] active:shadow-none active:translate-x-1 active:translate-y-1 ${selectedExam?.id === exam.id ? 'bg-black text-white translate-x-1 translate-y-1 !shadow-none border-l-[12px] border-l-[#00E57A]' : 'bg-white text-black hover:bg-[#FFE600]'}`}>
+                <button 
+                  key={exam.id} 
+                  onClick={() => handleSelectExam(exam)}
+                  className={`w-full p-5 border-[4px] border-black text-left flex flex-col transition-all shadow-[6px_6px_0px_0px_#000] active:shadow-none active:translate-x-1 active:translate-y-1 ${
+                    selectedExam?.id === exam.id 
+                      ? 'bg-black text-white translate-x-1 translate-y-1 !shadow-none border-l-[12px] border-l-[#00E57A]' 
+                      : 'bg-white text-black hover:bg-[#FFE600]'
+                  }`}
+                >
                   <p className="font-black uppercase text-xl truncate w-full mb-2">{exam.title || "Untitled Exam"}</p>
                   <div className={`flex justify-between w-full text-xs font-black uppercase tracking-widest ${selectedExam?.id === exam.id ? 'text-[#00E57A]' : 'text-black/60'}`}>
                     <span>CODE: {exam.code}</span>
@@ -353,7 +519,7 @@ function EditContent() {
           )}
         </div>
 
-        {/* SAĞ PANEL: DETAYLAR */}
+        {/* SAĞ PANEL: SEÇİLİ SINAVIN DETAYLARI VE SORULARI */}
         <div className="flex-1 p-4 md:p-10 overflow-y-auto">
           {!selectedExam ? (
             <div className="h-full flex flex-col items-center justify-center text-center bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] m-4 md:m-10 p-10">
@@ -365,12 +531,14 @@ function EditContent() {
               
               <div className="bg-black text-white p-8 border-[6px] border-black shadow-[12px_12px_0px_0px_#25c0f4] rotate-1">
                 <div className="flex items-center gap-4 mb-2">
-                  <span className="bg-[#FFE600] text-black px-3 py-1 font-black text-sm uppercase border-2 border-black">CODE: {selectedExam.code}</span>
+                  <span className="bg-[#FFE600] text-black px-3 py-1 font-black text-sm uppercase border-2 border-black">
+                    CODE: {selectedExam.code}
+                  </span>
                 </div>
                 <h1 className="text-5xl font-black uppercase tracking-tighter mb-2">{selectedExam.title}</h1>
               </div>
 
-              {/* 🟢 SINAV AYARLARI KARTI & AKSİYON BUTONLARI (Silme / Kopyalama) */}
+              {/* SINAV AYARLARI KARTI (SİL VE KOPYALA İLE BİRLİKTE) */}
               <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] overflow-hidden">
                 <div className="bg-[#25c0f4] border-b-[6px] border-black p-6 flex items-center gap-4">
                   <Settings className="w-10 h-10 stroke-[3] text-black" />
@@ -380,18 +548,21 @@ function EditContent() {
                 <div className="p-6 md:p-10 grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="md:col-span-3">
                     <label className="block text-sm font-black text-black uppercase mb-2">Exam Title</label>
-                    <input type="text" value={selectedExam.title || ""} onChange={e => setSelectedExam({...selectedExam, title: e.target.value})} className="w-full border-4 border-black p-4 text-2xl font-black text-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
+                    <input type="text" value={selectedExam.title || ""} onChange={e => setSelectedExam({...selectedExam, title: e.target.value})}
+                      className="w-full border-4 border-black p-4 text-2xl font-black text-black uppercase shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
                   </div>
                   <div>
                     <label className="block text-sm font-black text-black uppercase mb-2">Time Limit (Mins)</label>
-                    <input type="number" value={selectedExam.time_limit || ""} onChange={e => setSelectedExam({...selectedExam, time_limit: Number(e.target.value)})} className="w-full border-4 border-black p-4 text-xl font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
+                    <input type="number" value={selectedExam.time_limit || ""} onChange={e => setSelectedExam({...selectedExam, time_limit: Number(e.target.value)})}
+                      className="w-full border-4 border-black p-4 text-xl font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
                   </div>
                   <div>
                     <label className="block text-sm font-black uppercase mb-2 text-red-600">Penalty (Secs)</label>
-                    <input type="number" value={selectedExam.penalty_seconds || ""} onChange={e => setSelectedExam({...selectedExam, penalty_seconds: Number(e.target.value)})} className="w-full border-4 border-black p-4 text-xl font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none focus:border-red-600 focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
+                    <input type="number" value={selectedExam.penalty_seconds || ""} onChange={e => setSelectedExam({...selectedExam, penalty_seconds: Number(e.target.value)})}
+                      className="w-full border-4 border-black p-4 text-xl font-black text-black shadow-[6px_6px_0px_0px_#000] outline-none focus:border-red-600 focus:translate-x-1 focus:translate-y-1 focus:shadow-none transition-all" />
                   </div>
                   
-                  {/* 🟢 AKSİYON BUTONLARI */}
+                  {/* SİLME / KOPYALAMA BUTONLARI BURADA! */}
                   <div className="md:col-span-3 flex flex-col md:flex-row items-end gap-4 mt-2">
                     <button onClick={handleSaveExamSettings} disabled={saving} className="flex-1 w-full bg-[#00E57A] text-black border-4 border-black p-4 font-black uppercase text-xl flex items-center justify-center gap-2 shadow-[6px_6px_0px_0px_#000] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50">
                       <Save className="w-6 h-6 stroke-[3]" /> {saving ? "Working..." : "Update"}
@@ -408,14 +579,17 @@ function EditContent() {
                 </div>
               </div>
 
-              {/* SORULAR KARTI */}
+              {/* RENKLİ SORULAR KARTI */}
               <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] overflow-hidden">
                 <div className="bg-[#FF6B9E] border-b-[6px] border-black p-6 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <ListOrdered className="w-10 h-10 stroke-[3] text-black" />
                     <h2 className="text-3xl md:text-4xl font-black text-black uppercase tracking-tighter">Questions ({questions.length})</h2>
                   </div>
-                  <button onClick={() => setEditQ({ id: "", exam_id: selectedExam.id, type: "mc", text: "", options: ["", "", "", ""], answer: "", points: 10 })} className="bg-black text-[#00E57A] px-6 py-3 border-4 border-black font-black uppercase flex items-center gap-2 hover:bg-[#00E57A] hover:text-black transition-colors shadow-[4px_4px_0px_0px_#00E57A] active:translate-x-1 active:translate-y-1 active:shadow-none">
+                  <button 
+                    onClick={() => setEditQ({ id: "", exam_id: selectedExam.id, type: "mc", text: "", options: ["", "", "", ""], answer: "", points: 10, media_type: "none", media_url: "" })}
+                    className="bg-black text-[#00E57A] px-6 py-3 border-4 border-black font-black uppercase flex items-center gap-2 hover:bg-[#00E57A] hover:text-black transition-colors shadow-[4px_4px_0px_0px_#00E57A] active:translate-x-1 active:translate-y-1 active:shadow-none"
+                  >
                     <Plus className="w-6 h-6 stroke-[3]" /> Add New
                   </button>
                 </div>
@@ -424,7 +598,7 @@ function EditContent() {
                   {loadingQuestions ? (
                     <p className="font-black text-xl text-black uppercase p-4">Loading questions...</p>
                   ) : questions.length === 0 ? (
-                    <p className="font-black text-xl text-black uppercase p-8 border-4 border-black border-dashed bg-gray-50 text-center">No questions in this exam.</p>
+                    <p className="font-black text-xl text-black uppercase p-8 border-4 border-black border-dashed bg-[#f5f8f8] text-center">No questions in this exam.</p>
                   ) : (
                     <div className="space-y-6">
                       {questions.map((q, idx) => (
@@ -432,8 +606,18 @@ function EditContent() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-4">
                               <span className="bg-black text-white px-3 py-1 font-black text-sm border-2 border-black">Q {idx + 1}</span>
-                              <span className={`${TYPE_COLORS[q.type]} px-3 py-1 text-xs border-2 border-black font-black uppercase`}>{TYPE_LABELS[q.type]}</span>
-                              <span className="bg-[#FFE600] px-3 py-1 text-xs border-2 border-black font-black uppercase text-black">{q.points || 10} PTS</span>
+                              <span className={`${TYPE_COLORS[q.type]} px-3 py-1 text-xs border-2 border-black font-black uppercase`}>
+                                {TYPE_LABELS[q.type]}
+                              </span>
+                              <span className="bg-[#FFE600] px-3 py-1 text-xs border-2 border-black font-black uppercase text-black">
+                                {q.points || 10} PTS
+                              </span>
+                              {/* EĞER MEDYA VARSA KÜÇÜK BİR İKON GÖSTER */}
+                              {q.media_url && (
+                                <span className="bg-[#a855f7] text-white px-2 py-1 text-xs border-2 border-black font-black flex items-center gap-1">
+                                  {q.media_type === 'image' ? <ImageIcon className="w-3 h-3" /> : <Video className="w-3 h-3" />}
+                                </span>
+                              )}
                             </div>
                             <h3 className="font-black text-black text-2xl leading-tight mb-3 pr-4">{q.text}</h3>
                             <div className="bg-[#f5f8f8] p-3 border-4 border-black inline-block mt-2">
@@ -443,10 +627,12 @@ function EditContent() {
                           </div>
                           
                           <div className="flex items-center gap-3 w-full md:w-auto shrink-0 mt-4 md:mt-0">
-                            <button onClick={() => setEditQ(q)} className="flex-1 md:flex-none bg-black text-white border-[4px] border-black p-4 font-black uppercase text-sm flex items-center justify-center gap-2 hover:bg-[#FFE600] hover:text-black transition-colors">
+                            <button onClick={() => setEditQ(q)}
+                              className="flex-1 md:flex-none bg-black text-white border-[4px] border-black p-4 font-black uppercase text-sm flex items-center justify-center gap-2 hover:bg-[#FFE600] hover:text-black transition-colors">
                               <PenLine className="w-5 h-5 stroke-[3]" /> Edit
                             </button>
-                            <button onClick={() => handleDeleteQuestion(q.id)} className="flex-1 md:flex-none bg-white text-black border-[4px] border-black p-4 font-black uppercase text-sm flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors">
+                            <button onClick={() => handleDeleteQuestion(q.id)}
+                              className="flex-1 md:flex-none bg-white text-black border-[4px] border-black p-4 font-black uppercase text-sm flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors">
                               <Trash2 className="w-5 h-5 stroke-[3]" />
                             </button>
                           </div>

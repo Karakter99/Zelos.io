@@ -12,12 +12,15 @@ import {
 } from "lucide-react";
 
 type QuestionType = "mc" | "tf" | "fib" | "ms" | "short" | "long";
+type MediaType = "image" | "video" | "none"; // 🟢 Medya tipi eklendi
 
 interface Question {
   id: string;
   text: string;
   options: string[];
   type: QuestionType;
+  media_url?: string; // 🟢 Medya linki eklendi
+  media_type?: MediaType; // 🟢 Medya tipi eklendi
 }
 
 const normalizeType = (raw: string | undefined | null): QuestionType => {
@@ -120,7 +123,7 @@ export default function ActiveExamPage() {
           })
           .eq("id", studentId);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Auto-submit failed", err);
     }
   }, [studentId, questions.length]);
@@ -203,20 +206,32 @@ export default function ActiveExamPage() {
           );
         }
 
+        // 🟢 DÜZELTME: Veritabanından resim ve video kolonlarını da çekiyoruz
         const { data: questionsData, error: questionsErr } = await supabase
           .from("questions")
-          .select("id, text, options, type")
+          .select("id, text, options, type, media_url, media_type")
           .eq("exam_id", examData.id);
 
         if (questionsErr || !questionsData)
           throw new Error("Could not load questions.");
 
-        if (questionsData && questionsData.length > 0) {
+if (questionsData && questionsData.length > 0) {
           const normalizedData: Question[] = (questionsData as any[]).map(
-            (q) => ({
-              ...q,
-              type: normalizeType(q.type),
-            }),
+            (q) => {
+              const qType = normalizeType(q.type);
+              let finalOptions = q.options || [];
+
+              // 🟢 Sadece Çoktan Seçmeli (MC) ve Çoklu Seçim (MS) şıklarını rastgele karıştır
+              if ((qType === "mc" || qType === "ms") && finalOptions.length > 0) {
+                finalOptions = [...finalOptions].sort(() => Math.random() - 0.5);
+              }
+
+              return {
+                ...q,
+                type: qType,
+                options: finalOptions,
+              };
+            }
           );
 
           const savedOrder = localStorage.getItem(
@@ -243,7 +258,7 @@ export default function ActiveExamPage() {
           }
           setQuestions(finalQuestions);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("Initialization Error:", err);
         router.push("/exam");
       } finally {
@@ -351,6 +366,7 @@ export default function ActiveExamPage() {
       examStatus === "waiting"
     )
       return;
+
     const triggerDetention = async () => {
       const penaltyEndTime = new Date(
         Date.now() + examPenaltySeconds * 1000,
@@ -366,21 +382,38 @@ export default function ActiveExamPage() {
             current_question_index: currentIndex,
           })
           .eq("id", studentId);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("Failed to update detention", err);
       }
     };
+
     const handleVisibilityChange = () => {
       if (document.hidden) triggerDetention();
     };
+
     const handleWindowBlur = () => {
+      // 🟢 VİDEO KORUMASI: Eğer öğrencinin tıkladığı şey bir IFRAME (Video) ise ceza verme!
+      if (document.activeElement?.tagName === "IFRAME") {
+        return;
+      }
       triggerDetention();
     };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleWindowBlur);
+
+    // 🟢 EKSTRA: Videodan çıkıp sayfaya tıkladığında odağı ana sayfaya geri bağla
+    const handleWindowFocus = () => {
+      if (document.activeElement?.tagName === "IFRAME") {
+        (document.activeElement as HTMLElement).blur();
+      }
+    };
+    window.addEventListener("focus", handleWindowFocus);
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
     };
   }, [
     studentId,
@@ -493,7 +526,6 @@ export default function ActiveExamPage() {
             question_text: currentQ.text,
             question_type: qType,
             selected_answer: answerToSave,
-            // 🟢 DÜZELTME: Artık mc, tf ve ms otomatik; sadece fib, short, long öğretmene gider
             needs_grading: ["short", "long", "fib"].includes(qType),
           });
 
@@ -520,7 +552,7 @@ export default function ActiveExamPage() {
           })
           .eq("id", studentId);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Progress Error:", err);
     } finally {
       setIsSubmitting(false);
@@ -737,6 +769,30 @@ export default function ActiveExamPage() {
             {currentQuestion.text}
           </h2>
         </div>
+
+        {/* 🟢 SORU MEDYASI GÖRÜNÜMÜ */}
+        {currentQuestion.media_url && currentQuestion.media_type !== 'none' && (
+          <div className="border-[4px] border-black shadow-[8px_8px_0px_0px_#000] bg-white overflow-hidden p-2">
+            {currentQuestion.media_type === 'image' ? (
+              <img
+                src={currentQuestion.media_url}
+                alt="Question Support"
+                className="w-full max-h-[400px] object-contain border-[4px] border-black bg-[#f5f8f8]"
+              />
+            ) : currentQuestion.media_type === 'video' ? (
+              <div className="aspect-video w-full border-[4px] border-black">
+<iframe
+  className="w-full h-full"
+  src={`${currentQuestion.media_url.replace("watch?v=", "embed/")}?rel=0&modestbranding=1`}
+  title="YouTube video player"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+></iframe>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {qType === "mc" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

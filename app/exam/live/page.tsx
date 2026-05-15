@@ -19,8 +19,10 @@ interface Question {
   text: string;
   options: string[];
   type: QuestionType;
-  media_url?: string; // 🟢 Medya linki eklendi
-  media_type?: MediaType; // 🟢 Medya tipi eklendi
+  answer?: string; // 🟢 Doğru cevabı tutmak için eklendi (Veritabanından geliyor)
+  points?: number; // 🟢 Maksimum puanı tutmak için eklendi
+  media_url?: string;
+  media_type?: MediaType;
 }
 
 const normalizeType = (raw: string | undefined | null): QuestionType => {
@@ -206,22 +208,21 @@ export default function ActiveExamPage() {
           );
         }
 
-        // 🟢 DÜZELTME: Veritabanından resim ve video kolonlarını da çekiyoruz
+        // 🟢 DÜZELTME: Veritabanından resim, video, cevap (answer) ve puanları (points) da çekiyoruz
         const { data: questionsData, error: questionsErr } = await supabase
           .from("questions")
-          .select("id, text, options, type, media_url, media_type")
+          .select("id, text, options, type, media_url, media_type, answer, points")
           .eq("exam_id", examData.id);
 
         if (questionsErr || !questionsData)
           throw new Error("Could not load questions.");
 
-if (questionsData && questionsData.length > 0) {
+        if (questionsData && questionsData.length > 0) {
           const normalizedData: Question[] = (questionsData as any[]).map(
             (q) => {
               const qType = normalizeType(q.type);
               let finalOptions = q.options || [];
 
-              // 🟢 Sadece Çoktan Seçmeli (MC) ve Çoklu Seçim (MS) şıklarını rastgele karıştır
               if ((qType === "mc" || qType === "ms") && finalOptions.length > 0) {
                 finalOptions = [...finalOptions].sort(() => Math.random() - 0.5);
               }
@@ -392,7 +393,6 @@ if (questionsData && questionsData.length > 0) {
     };
 
     const handleWindowBlur = () => {
-      // 🟢 VİDEO KORUMASI: Eğer öğrencinin tıkladığı şey bir IFRAME (Video) ise ceza verme!
       if (document.activeElement?.tagName === "IFRAME") {
         return;
       }
@@ -402,7 +402,6 @@ if (questionsData && questionsData.length > 0) {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleWindowBlur);
 
-    // 🟢 EKSTRA: Videodan çıkıp sayfaya tıkladığında odağı ana sayfaya geri bağla
     const handleWindowFocus = () => {
       if (document.activeElement?.tagName === "IFRAME") {
         (document.activeElement as HTMLElement).blur();
@@ -526,6 +525,9 @@ if (questionsData && questionsData.length > 0) {
             question_text: currentQ.text,
             question_type: qType,
             selected_answer: answerToSave,
+            // 🟢 AI'ın Not Verebilmesi İçin Gerekli Olan Referans Verileri
+            correct_answer: currentQ.answer || "", 
+            max_points: currentQ.points || 10,
             needs_grading: ["short", "long", "fib"].includes(qType),
           });
 

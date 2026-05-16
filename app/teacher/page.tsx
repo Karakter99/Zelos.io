@@ -222,6 +222,12 @@ function DashboardContent() {
             Exam Edit
           </Link>
                      <Link
+            href="/teacher/analytics/"
+            className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
+          >
+            Analytics
+          </Link>
+                     <Link
             href="/teacher/results"
             className="text-3xl font-black text-black uppercase hover:translate-x-2 transition-transform opacity-50 hover:opacity-100"
           >

@@ -10,19 +10,17 @@ import {
   Activity,
   Lock,
   Users,
-  Download,
   Unlock,
   PlayCircle,
   Radio,
-  ArrowLeft, // 🟢 YENİ İKON EKLENDİ
+  ArrowLeft,
 } from "lucide-react";
-import Link from "next/link";
-import * as XLSX from "xlsx";
 
 interface Exam {
   id: string;
   title?: string;
   status?: string;
+  started_at?: string; 
 }
 
 interface Student {
@@ -47,11 +45,18 @@ export default function LiveCheatMonitor() {
   const [students, setStudents] = useState<Student[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(Date.now()); // 🟢 SANİYELİK ZAMANLAYICI
 
   const [confirmModal, setConfirmModal] = useState<{
     message: string;
     onConfirm: () => void;
   } | null>(null);
+
+  // 🟢 SANİYEDE BİR ZAMANI GÜNCELLE
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!examCode) return;
@@ -66,7 +71,23 @@ export default function LiveCheatMonitor() {
 
         if (examData) {
           setExam(examData);
-          setExamStatus(examData.status || "waiting");
+          let currentStatus = examData.status || "waiting";
+
+          if (currentStatus === "live" && examData.started_at) {
+            const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+            const startedTime = new Date(examData.started_at).getTime();
+            
+            if (Date.now() - startedTime > TWELVE_HOURS_MS) {
+              await supabase
+                .from("exams")
+                .update({ status: "finished" })
+                .eq("id", examData.id);
+              
+              currentStatus = "finished";
+            }
+          }
+
+          setExamStatus(currentStatus);
 
           const { count } = await supabase
             .from("questions")
@@ -99,9 +120,6 @@ export default function LiveCheatMonitor() {
     return () => clearInterval(interval);
   }, [examCode]);
 
-  // --- 🟢 MASTER SWITCH FUNCTION 🟢 ---
-
-  // 🟢 1. SINAVI BAŞLATMA
   const handleStartExam = async () => {
     setConfirmModal({
       message: "Are you sure? This will instantly start the timer for all students!",
@@ -114,6 +132,7 @@ export default function LiveCheatMonitor() {
             .eq("id", exam?.id);
 
           setExamStatus("live");
+          setExam(prev => prev ? {...prev, started_at: now} : null);
         } catch (err: unknown) {
           console.error("Error starting exam:", err);
           alert("Failed to start exam.");
@@ -122,7 +141,6 @@ export default function LiveCheatMonitor() {
     });
   };
 
-  // 🟢 2. SINAVI BİTİRME (YENİ EKLENEN)
   const handleEndExam = async () => {
     setConfirmModal({
       message: "Are you sure you want to END the exam for everyone? Students will be locked out.",
@@ -142,36 +160,6 @@ export default function LiveCheatMonitor() {
     });
   };
 
-  const exportToExcel = () => {
-    if (students.length === 0) return alert("No students to export yet!");
-
-    const data = students.map((s) => {
-      const correct = s.score || 0;
-      const mistakes = totalQuestions - correct;
-      const percentage = Math.round((correct / totalQuestions) * 100) || 0;
-
-      return {
-        "Student Name": s.name,
-        Status: s.status === "finished" ? "Completed" : "Active/Quit",
-        "Questions Answered": `${s.current_question_index} / ${totalQuestions}`,
-        "Correct Answers": correct,
-        Mistakes: mistakes,
-        "Final Score (%)": `${percentage}%`,
-        "Caught Cheating?": s.detention_end_time ? "🚨 YES" : "No",
-      };
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
-
-    const safeTitle = exam?.title
-      ? exam.title.replace(/[^a-z0-9]/gi, "_")
-      : "Exam";
-    XLSX.writeFile(workbook, `${safeTitle}_Class_Results.xlsx`);
-  };
-
-  // 🟢 3. AFFETME VE KİLİDİ AÇMA
   const handleRemoveSuspension = async (studentId: string) => {
     setConfirmModal({
       message: "Are you sure you want to unlock this student?",
@@ -233,6 +221,44 @@ export default function LiveCheatMonitor() {
     );
   }
 
+  // 🟢 GERİ SAYIM GÖRÜNTÜSÜ HESAPLAMA
+// 🟢 GERİ SAYIM GÖRÜNTÜSÜ HESAPLAMA
+  let countdownDisplay = null;
+  if (examStatus === "live" && exam?.started_at) {
+    const startedTime = new Date(exam.started_at).getTime();
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+    const timeLeft = startedTime + TWELVE_HOURS_MS - currentTime;
+    
+    if (timeLeft > 0) {
+      const h = Math.floor(timeLeft / (1000 * 60 * 60)).toString().padStart(2, '0');
+      const m = Math.floor((timeLeft / 1000 / 60) % 60).toString().padStart(2, '0');
+      const s = Math.floor((timeLeft / 1000) % 60).toString().padStart(2, '0');
+      countdownDisplay = (
+        <span className="bg-[#FF6B9E] text-black border-2 border-black shadow-[4px_4px_0px_0px_#000] px-3 py-1 font-black uppercase text-sm mt-3 inline-block">
+          ⏳ CLOSES IN: {h}:{m}:{s}
+        </span>
+      );
+    } else {
+      countdownDisplay = (
+        <span className="bg-black text-[#00E57A] border-2 border-black shadow-[4px_4px_0px_0px_#00E57A] px-3 py-1 font-black uppercase text-sm mt-3 inline-block">
+          ✅ FINISHED
+        </span>
+      );
+    }
+  } else if (examStatus === "finished") {
+    countdownDisplay = (
+      <span className="bg-black text-[#00E57A] border-2 border-black shadow-[4px_4px_0px_0px_#00E57A] px-3 py-1 font-black uppercase text-sm mt-3 inline-block">
+        ✅ FINISHED
+      </span>
+    );
+  } else {
+    countdownDisplay = (
+      <span className="bg-white text-black border-2 border-black shadow-[4px_4px_0px_0px_#000] px-3 py-1 font-black uppercase text-sm mt-3 inline-block opacity-50">
+        ⏸️ WAITING TO START
+      </span>
+    );
+  }
+
   return (
     <div
       className="min-h-screen flex flex-col font-sans selection:bg-black selection:text-[#00E57A] bg-[#FFE600]"
@@ -244,7 +270,6 @@ export default function LiveCheatMonitor() {
     >
       <Navbar />
       
-      {/* 🟢 MODAL KISMI */}
       {confirmModal && (
         <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
           <div className="bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 max-w-md w-full">
@@ -276,7 +301,6 @@ export default function LiveCheatMonitor() {
         <div className=" text-black bg-white border-[6px] border-black shadow-[12px_12px_0px_0px_#000] p-8 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
           
           <div>
-            {/* 🟢 DASHBOARD'A DÖNÜŞ BUTONU 🟢 */}
             <button
               onClick={() => router.push("/teacher")}
               className="flex items-center gap-2 font-black uppercase text-sm mb-6 hover:translate-x-1 transition-transform bg-black text-white px-4 py-2 border-2 border-black shadow-[4px_4px_0px_0px_#25c0f4] w-fit"
@@ -290,27 +314,25 @@ export default function LiveCheatMonitor() {
             <h1 className="text-5xl md:text-7xl font-black text-black uppercase tracking-tighter leading-none">
               {exam?.title || "Exam"}
             </h1>
-            <p className="text-2xl font-bold mt-2">
-              CODE:{" "}
-              <span className="bg-[#FFE600] px-2 border-2 border-black">
-                {examCode}
-              </span>
-            </p>
+<div className="text-2xl font-bold mt-2 flex items-center gap-4 flex-wrap">
+  <span>CODE: <span className="bg-[#FFE600] px-2 border-2 border-black">{examCode}</span></span>
+  {countdownDisplay}
+</div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 mt-4 xl:mt-0">
-            {/* 🟢 THE MASTER SWITCH UI 🟢 */}
+            {/* 🟢 BUTONLAR KÜÇÜLTÜLDÜ (p-3, text-xl, w-5 h-5) */}
             {examStatus === "waiting" || !examStatus ? (
               <button
                 onClick={handleStartExam}
-                className="bg-[#00E57A] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:bg-black active:text-white transition-all group animate-pulse"
+                className="bg-[#00E57A] text-black border-4 border-black shadow-[4px_4px_0px_0px_#000] p-3 px-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:bg-black active:text-white transition-all group animate-pulse"
               >
-                <PlayCircle className="w-7 h-7 stroke-[3]" />
+                <PlayCircle className="w-5 h-5 stroke-[3]" />
                 <div className="text-left">
-                  <div className="text-2xl font-black uppercase leading-none tracking-tighter">
+                  <div className="text-xl font-black uppercase leading-none tracking-tighter">
                     Start Exam
                   </div>
-                  <div className="text-xs font-black uppercase tracking-widest opacity-80">
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-80">
                     Waiting Room
                   </div>
                 </div>
@@ -318,100 +340,68 @@ export default function LiveCheatMonitor() {
             ) : examStatus === "live" ? (
               <button
                 onClick={handleEndExam}
-                className="bg-black text-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#FF6B9E] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer group"
+                className="bg-black text-[#FF6B9E] border-4 border-black shadow-[4px_4px_0px_0px_#FF6B9E] p-3 px-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer group"
               >
-                <Radio className="w-7 h-7 stroke-[3] animate-pulse group-hover:hidden" />
-                <Lock className="w-7 h-7 stroke-[3] hidden group-hover:block" />
+                <Radio className="w-5 h-5 stroke-[3] animate-pulse group-hover:hidden" />
+                <Lock className="w-5 h-5 stroke-[3] hidden group-hover:block" />
                 <div className="text-left">
-                  <div className="text-2xl font-black uppercase leading-none tracking-tighter group-hover:text-white">
+                  <div className="text-xl font-black uppercase leading-none tracking-tighter group-hover:text-white">
                     Live
                   </div>
-                  <div className="text-xs font-black uppercase tracking-widest opacity-80 group-hover:hidden">
-                    Test Active
-                  </div>
-                  <div className="text-xs font-black uppercase tracking-widest text-white hidden group-hover:block">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-white hidden group-hover:block">
                     Click to End Exam
                   </div>
                 </div>
               </button>
             ) : (
-              <div className="bg-[#00E57A] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
-                <CheckCircle2 className="w-7 h-7 stroke-[3]" />
+              <div className="bg-[#00E57A] text-black border-4 border-black shadow-[4px_4px_0px_0px_#000] p-3 px-4 flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 stroke-[3]" />
                 <div className="text-left">
-                  <div className="text-2xl font-black uppercase leading-none tracking-tighter">
+                  <div className="text-xl font-black uppercase leading-none tracking-tighter">
                     Finished
-                  </div>
-                  <div className="text-xs font-black uppercase tracking-widest opacity-80">
-                    Exam Closed
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="bg-[#5A87FF] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
-              <Users className="w-7 h-7 text-white stroke-[3]" />
+            <div className="bg-[#5A87FF] border-4 border-black shadow-[4px_4px_0px_0px_#000] p-3 px-4 flex items-center gap-3">
+              <Users className="w-5 h-5 text-white stroke-[3]" />
               <div>
-                <div className="text-3xl font-black text-white leading-none">
+                <div className="text-2xl font-black text-white leading-none">
                   {students.length}
                 </div>
-                <div className="text-xs font-black uppercase tracking-widest text-white/80">
+                <div className="text-[10px] font-black uppercase tracking-widest text-white/80">
                   Total
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#00E57A] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3">
-              <CheckCircle2 className="w-7 h-7 text-black stroke-[3]" />
+            <div className="bg-[#00E57A] border-4 border-black shadow-[4px_4px_0px_0px_#000] p-3 px-4 flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-black stroke-[3]" />
               <div>
-                <div className="text-3xl font-black text-black leading-none">
+                <div className="text-2xl font-black text-black leading-none">
                   {finishedCount}
                 </div>
-                <div className="text-xs font-black uppercase tracking-widest">
+                <div className="text-[10px] font-black uppercase tracking-widest">
                   Finished
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#FF6B9E] border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 animate-pulse">
-              <AlertTriangle className="w-7 h-7 text-black stroke-[3]" />
+            <div className="bg-[#FF6B9E] border-4 border-black shadow-[4px_4px_0px_0px_#000] p-3 px-4 flex items-center gap-3 animate-pulse">
+              <AlertTriangle className="w-5 h-5 text-black stroke-[3]" />
               <div>
-                <div className="text-3xl font-black text-black leading-none">
+                <div className="text-2xl font-black text-black leading-none">
                   {caughtCount}
                 </div>
-                <div className="text-xs font-black uppercase tracking-widest">
+                <div className="text-[10px] font-black uppercase tracking-widest">
                   In Detention
                 </div>
               </div>
             </div>
 
-            <Link
-              href={`/teacher/results/${examCode}`}
-              className="bg-[#FFE600] text-black border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer"
-            >
-              <div className="text-left">
-                <div className="text-2xl font-black uppercase leading-none tracking-tighter">
-                  Results
-                </div>
-                <div className="text-xs font-black uppercase tracking-widest">
-                  View Live →
-                </div>
-              </div>
-            </Link>
+            {/* 🟢 RESULTS VE EXPORT BUTONLARI KALDIRILDI */}
 
-            <button
-              onClick={exportToExcel}
-              className="bg-[#a855f7] text-white border-4 border-black shadow-[6px_6px_0px_0px_#000] p-4 flex items-center gap-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all cursor-pointer group"
-            >
-              <Download className="w-7 h-7 stroke-[3] group-hover:-translate-y-1 transition-transform" />
-              <div className="text-left hidden sm:block">
-                <div className="text-2xl font-black uppercase leading-none tracking-tighter">
-                  Export
-                </div>
-                <div className="text-xs font-black uppercase tracking-widest text-white/80">
-                  .XLSX File
-                </div>
-              </div>
-            </button>
           </div>
         </div>
 

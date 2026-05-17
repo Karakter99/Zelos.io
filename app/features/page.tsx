@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
@@ -13,6 +14,19 @@ export default function FeaturesPage() {
         backgroundSize: "32px 32px",
       }}
     >
+      {/* 🟢 YENİ EKLENEN: Soldan Sağa Kayan Yazı Animasyonu */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes scrollRight {
+          from { transform: translateX(-50%); }
+          to { transform: translateX(0%); }
+        }
+        .animate-scroll-right {
+          animation: scrollRight 25s linear infinite;
+          display: flex;
+          width: max-content;
+        }
+      `}} />
+
       <Navbar />
       <main className="max-w-7xl mx-auto px-6 pt-12 pb-24 relative z-10 flex-grow w-full">
         {/* Hero Section */}
@@ -27,12 +41,12 @@ export default function FeaturesPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-6">
-              <button className="bg-[#25c0f4] border-4 border-black px-10 py-5 text-xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
+              <Link href="/get-started" className="inline-block text-center bg-[#25c0f4] border-4 border-black px-10 py-5 text-xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
                 Start Free Trial
-              </button>
-              <button className="bg-white border-4 border-black px-10 py-5 text-xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
+              </Link>
+              <Link href="/support" className="inline-block text-center bg-white border-4 border-black px-10 py-5 text-xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
                 View Demo
-              </button>
+              </Link>
             </div>
           </div>
           <div className="lg:w-2/5 relative">
@@ -55,6 +69,7 @@ export default function FeaturesPage() {
             <span className="material-symbols-outlined text-4xl">bolt</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+            
             {/* Feature 1: Security */}
             <div className="md:col-span-7 bg-white border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] group hover:bg-[#25c0f4] transition-colors cursor-pointer">
               <div className="flex justify-between items-start mb-8">
@@ -80,7 +95,7 @@ export default function FeaturesPage() {
                 <span className="material-symbols-outlined text-[6rem] leading-none mb-4">analytics</span>
                 <h3 className="text-4xl font-black uppercase mb-4 tracking-tighter">Data that Screams</h3>
               </div>
-              <p className="text-xl font-bold leading-snug">Visual data that actually makes sense. Bold charts for bold decisions. Insights delivered instantly.</p>
+              <p className="text-xl font-bold leading-snug">View student scores on gorgeous graphical charts, track class trends, and export to Excel instantly.</p>
             </div>
             
             {/* Feature 4: Small Items */}
@@ -96,21 +111,49 @@ export default function FeaturesPage() {
                 <p className="text-base font-bold">Phones, tablets, laptops. We run on everything.</p>
               </div>
             </div>
+
+            {/* Feature 5: AI Grading */}
+            <div className="md:col-span-8 bg-[#FF6B9E] border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between cursor-pointer hover:bg-black hover:text-[#FF6B9E] transition-colors group">
+              <div className="flex justify-between items-start mb-4">
+                <span className="material-symbols-outlined text-[5rem] leading-none mb-0 group-hover:animate-pulse">auto_awesome</span>
+                <div className="bg-white text-black px-3 py-1 font-black text-xs uppercase tracking-widest border-2 border-black mt-2">New</div>
+              </div>
+              <div>
+                <h3 className="text-4xl font-black uppercase mb-4 tracking-tighter">Gemini AI Grading</h3>
+                <p className="text-xl font-bold leading-snug">Grade hundreds of open-ended questions in seconds. Our Gemini AI integration evaluates long answers instantly with flawless accuracy.</p>
+              </div>
+            </div>
+
+            {/* Feature 6: Rich Media */}
+            <div className="md:col-span-4 bg-white border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] rotate-[2deg] flex flex-col justify-between cursor-pointer hover:bg-[#a855f7] hover:text-white transition-colors group">
+              <div>
+                <span className="material-symbols-outlined text-[5rem] leading-none mb-4 group-hover:scale-110 transition-transform">perm_media</span>
+                <h3 className="text-3xl font-black uppercase mb-4 tracking-tighter">Rich Media</h3>
+              </div>
+              <p className="text-lg font-bold leading-snug">Embed images and YouTube videos directly into your questions to create engaging assessments.</p>
+            </div>
+
           </div>
         </div>
 
-        {/* Marquee Divider */}
+        {/* 🟢 GÜNCELLENEN: Marquee Divider (Soldan Sağa Kayan Tek Satır Yazı) */}
         <div className="w-[110vw] relative left-1/2 -translate-x-1/2 bg-black text-white py-6 border-y-4 border-black rotate-[2deg] mb-32 overflow-hidden flex items-center">
-          <div className="flex whitespace-nowrap gap-12 text-4xl font-black uppercase italic animate-pulse w-[200%]">
-            <span>* Zero-Lag Architecture *</span>
-            <span>* 24/7 Global Support *</span>
-            <span>* Military Grade Encryption *</span>
-            <span>* Zero-Lag Architecture *</span>
-            <span>* 24/7 Global Support *</span>
-            <span>* Military Grade Encryption *</span>
-            <span>* Zero-Lag Architecture *</span>
-            <span>* 24/7 Global Support *</span>
-            <span>* Military Grade Encryption *</span>
+          <div className="animate-scroll-right flex items-center whitespace-nowrap flex-nowrap gap-12 text-4xl font-black uppercase italic">
+            {/* shrink-0 ekleyerek elementlerin asla küçülüp alt satıra geçmemesini sağlıyoruz */}
+            <span className="shrink-0">* Zero-Lag Architecture *</span>
+            <span className="shrink-0">* 24/7 Global Support *</span>
+            <span className="shrink-0">* Military Grade Encryption *</span>
+            <span className="shrink-0">* Zero-Lag Architecture *</span>
+            <span className="shrink-0">* 24/7 Global Support *</span>
+            <span className="shrink-0">* Military Grade Encryption *</span>
+            
+            {/* Kusursuz döngü (seamless loop) için kopyalar */}
+            <span className="shrink-0">* Zero-Lag Architecture *</span>
+            <span className="shrink-0">* 24/7 Global Support *</span>
+            <span className="shrink-0">* Military Grade Encryption *</span>
+            <span className="shrink-0">* Zero-Lag Architecture *</span>
+            <span className="shrink-0">* 24/7 Global Support *</span>
+            <span className="shrink-0">* Military Grade Encryption *</span>
           </div>
         </div>
 
@@ -158,8 +201,12 @@ export default function FeaturesPage() {
             <h2 className="text-5xl md:text-7xl font-black uppercase mb-8 tracking-tighter">Ready to <span className="text-[#25c0f4] italic">Transform</span> Your Exams?</h2>
             <p className="text-xl md:text-2xl mb-12 max-w-2xl mx-auto font-bold text-gray-300 italic">Join 500+ institutions already using ExamFlow for their high-stakes assessments.</p>
             <div className="flex flex-col sm:flex-row gap-6 justify-center">
-              <button className="bg-[#25c0f4] text-black border-4 border-black px-12 py-6 text-2xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">Get Started Now</button>
-              <button className="bg-white text-black border-4 border-black px-12 py-6 text-2xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">Talk to Sales</button>
+              <Link href="/get-started" className="inline-block bg-[#25c0f4] text-black border-4 border-black px-12 py-6 text-2xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
+                Get Started Now
+              </Link>
+              <Link href="/support" className="inline-block bg-white text-black border-4 border-black px-12 py-6 text-2xl font-black uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all">
+                Talk to Sales
+              </Link>
             </div>
           </div>
           {/* Abstract floating shapes */}

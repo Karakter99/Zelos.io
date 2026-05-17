@@ -75,6 +75,13 @@ export default function Navbar() {
         >
           Pricing
         </Link>
+        {/* 🟢 YENİ EKLENEN SUPPORT LİNKİ */}
+        <Link
+          href="/support"
+          className="hover:underline decoration-4 underline-offset-4 decoration-[#a855f7]"
+        >
+          Support
+        </Link>
       </div>
 
       {/* 3. DYNAMIC AUTH BUTTONS */}
